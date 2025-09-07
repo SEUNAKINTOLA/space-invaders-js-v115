@@ -1,0 +1,104 @@
+/**
+ * Asset Loader Utility
+ * Handles loading and management of game assets with fallback support
+ */
+
+class AssetLoader {
+    constructor() {
+        this.cache = new Map();
+        this.loadingPromises = new Map();
+    }
+    
+    /**
+     * Load bullet sprite with fallback options
+     * @returns {Promise<string>} Promise resolving to sprite source
+     */
+    async loadBulletSprite() {
+        const cacheKey = 'bullet-sprite';
+        
+        if (this.cache.has(cacheKey)) {
+            return this.cache.get(cacheKey);
+        }
+        
+        if (this.loadingPromises.has(cacheKey)) {
+            return this.loadingPromises.get(cacheKey);
+        }
+        
+        const loadPromise = this._loadBulletWithFallback();
+        this.loadingPromises.set(cacheKey, loadPromise);
+        
+        try {
+            const sprite = await loadPromise;
+            this.cache.set(cacheKey, sprite);
+            return sprite;
+        } finally {
+            this.loadingPromises.delete(cacheKey);
+        }
+    }
+    
+    /**
+     * Load bullet sprite with multiple fallback strategies
+     * @private
+     * @returns {Promise<string>} Sprite source
+     */
+    async _loadBulletWithFallback() {
+        // Try loading PNG first
+        try {
+            await this._loadImage('assets/sprites/bullet.png');
+            return 'assets/sprites/bullet.png';
+        } catch (error) {
+            console.warn('PNG bullet sprite not found, trying SVG fallback');
+        }
+        
+        // Try loading SVG
+        try {
+            await this._loadImage('assets/sprites/bullet.svg');
+            return 'assets/sprites/bullet.svg';
+        } catch (error) {
+            console.warn('SVG bullet sprite not found, generating programmatically');
+        }
+        
+        // Generate programmatically as final fallback
+        const { SpriteGenerator } = await import('./spriteGenerator.js');
+        return SpriteGenerator.createOptimizedBullet();
+    }
+    
+    /**
+     * Load image and return promise
+     * @private
+     * @param {string} src - Image source
+     * @returns {Promise<HTMLImageElement>} Promise resolving to loaded image
+     */
+    _loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            img.src = src;
+        });
+    }
+    
+    /**
+     * Preload all game sprites
+     * @returns {Promise<void>} Promise resolving when all sprites are loaded
+     */
+    async preloadSprites() {
+        const sprites = [
+            'bullet'
+        ];
+        
+        const loadPromises = sprites.map(sprite => {
+            switch (sprite) {
+                case 'bullet':
+                    return this.loadBulletSprite();
+                default:
+                    return Promise.resolve();
+            }
+        });
+        
+        await Promise.all(loadPromises);
+        console.log('All sprites preloaded successfully');
+    }
+}
+
+export { AssetLoader };
