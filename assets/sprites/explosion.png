@@ -1,0 +1,172 @@
+// js/effects/explosionRenderer.js
+/**
+ * Canvas-based explosion effect renderer
+ * Generates explosion animations programmatically without requiring sprite sheets
+ */
+export class ExplosionRenderer {
+  constructor(canvas, context) {
+    this.canvas = canvas;
+    this.ctx = context;
+    this.explosions = new Map();
+    this.explosionId = 0;
+  }
+
+  /**
+   * Create a new explosion at the specified coordinates
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @param {Object} options - Explosion configuration
+   */
+  createExplosion(x, y, options = {}) {
+    const id = ++this.explosionId;
+    const explosion = {
+      id,
+      x,
+      y,
+      frame: 0,
+      maxFrames: 4,
+      frameTime: 100, // ms per frame
+      lastFrameTime: Date.now(),
+      size: options.size || 32,
+      color: options.color || '#ff6b00',
+      particles: this.generateParticles(x, y, options.particleCount || 8)
+    };
+
+    this.explosions.set(id, explosion);
+    return id;
+  }
+
+  /**
+   * Generate particle system for explosion
+   */
+  generateParticles(centerX, centerY, count) {
+    const particles = [];
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count;
+      particles.push({
+        x: centerX,
+        y: centerY,
+        vx: Math.cos(angle) * (2 + Math.random() * 3),
+        vy: Math.sin(angle) * (2 + Math.random() * 3),
+        life: 1.0,
+        decay: 0.02 + Math.random() * 0.02,
+        size: 2 + Math.random() * 3
+      });
+    }
+    return particles;
+  }
+
+  /**
+   * Update and render all active explosions
+   */
+  update() {
+    const now = Date.now();
+    const toRemove = [];
+
+    for (const [id, explosion] of this.explosions) {
+      // Update frame
+      if (now - explosion.lastFrameTime >= explosion.frameTime) {
+        explosion.frame++;
+        explosion.lastFrameTime = now;
+      }
+
+      // Remove completed explosions
+      if (explosion.frame >= explosion.maxFrames) {
+        toRemove.push(id);
+        continue;
+      }
+
+      // Update particles
+      explosion.particles.forEach(particle => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.life -= particle.decay;
+        particle.vx *= 0.98; // Air resistance
+        particle.vy *= 0.98;
+      });
+
+      // Render explosion
+      this.renderExplosion(explosion);
+    }
+
+    // Clean up completed explosions
+    toRemove.forEach(id => this.explosions.delete(id));
+  }
+
+  /**
+   * Render individual explosion frame
+   */
+  renderExplosion(explosion) {
+    const { x, y, frame, size, particles } = explosion;
+    const progress = frame / explosion.maxFrames;
+
+    // Main explosion circle
+    const radius = size * (0.5 + progress * 1.5);
+    const alpha = 1 - progress;
+
+    // Create gradient based on frame
+    const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, radius);
+    
+    switch (frame) {
+      case 0:
+        gradient.addColorStop(0, `rgba(255, 107, 0, ${alpha})`);
+        gradient.addColorStop(0.3, `rgba(255, 69, 0, ${alpha * 0.8})`);
+        gradient.addColorStop(1, `rgba(255, 69, 0, 0)`);
+        break;
+      case 1:
+        gradient.addColorStop(0, `rgba(255, 69, 0, ${alpha})`);
+        gradient.addColorStop(0.2, `rgba(255, 107, 0, ${alpha * 0.9})`);
+        gradient.addColorStop(0.4, `rgba(255, 255, 0, ${alpha * 0.7})`);
+        gradient.addColorStop(1, `rgba(255, 255, 0, 0)`);
+        break;
+      case 2:
+        gradient.addColorStop(0, `rgba(255, 255, 0, ${alpha})`);
+        gradient.addColorStop(0.3, `rgba(255, 107, 0, ${alpha * 0.8})`);
+        gradient.addColorStop(0.5, `rgba(255, 0, 0, ${alpha * 0.6})`);
+        gradient.addColorStop(1, `rgba(255, 0, 0, 0)`);
+        break;
+      case 3:
+        gradient.addColorStop(0, `rgba(102, 102, 102, ${alpha * 0.6})`);
+        gradient.addColorStop(0.4, `rgba(51, 51, 51, ${alpha * 0.4})`);
+        gradient.addColorStop(1, `rgba(51, 51, 51, 0)`);
+        break;
+    }
+
+    // Draw main explosion
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Draw particles
+    particles.forEach(particle => {
+      if (particle.life > 0) {
+        this.ctx.fillStyle = `rgba(255, ${Math.floor(107 * particle.life)}, 0, ${particle.life})`;
+        this.ctx.beginPath();
+        this.ctx.arc(particle.x, particle.y, particle.size * particle.life, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    });
+  }
+
+  /**
+   * Remove specific explosion
+   */
+  removeExplosion(id) {
+    this.explosions.delete(id);
+  }
+
+  /**
+   * Clear all explosions
+   */
+  clearAll() {
+    this.explosions.clear();
+  }
+
+  /**
+   * Get count of active explosions
+   */
+  getActiveCount() {
+    return this.explosions.size;
+  }
+}

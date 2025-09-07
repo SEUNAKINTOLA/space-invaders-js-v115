@@ -1,0 +1,77 @@
+/**
+ * Enemy Sprite Generator
+ * Generates a 24x24 pixel enemy sprite using HTML5 Canvas
+ */
+class EnemySpriteGenerator {
+  /**
+   * Generate enemy1 sprite and return as data URL
+   * @returns {string} Data URL of the generated sprite
+   */
+  static generateEnemy1Sprite() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 24;
+    canvas.height = 24;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear background (transparent)
+    ctx.clearRect(0, 0, 24, 24);
+    
+    // Main body (green alien)
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(6, 8, 12, 8);
+    
+    // Head
+    ctx.beginPath();
+    ctx.ellipse(12, 6, 4, 3, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Eyes (red)
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(10, 6, 1.5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(14, 6, 1.5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Eye highlights
+    ctx.fillStyle = '#66ff66';
+    ctx.beginPath();
+    ctx.arc(10.5, 5.5, 0.5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(14.5, 5.5, 0.5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Arms
+    ctx.fillStyle = '#00cc00';
+    ctx.fillRect(4, 10, 2, 4);
+    ctx.fillRect(18, 10, 2, 4);
+    
+    // Legs
+    ctx.fillRect(8, 16, 2, 4);
+    ctx.fillRect(14, 16, 2, 4);
+    
+    // Body details
+    ctx.fillRect(8, 10, 8, 1);
+    ctx.fillRect(8, 12, 8, 1);
+    ctx.fillRect(8, 14, 8, 1);
+    
+    return canvas.toDataURL('image/png');
+  }
+  
+  /**
+   * Download the generated sprite as PNG
+   */
+  static downloadEnemy1Sprite() {
+    const dataUrl = this.generateEnemy1Sprite();
+    const link = document.createElement('a');
+    link.download = 'enemy1.png';
+    link.href = dataUrl;
+    link.click();
+  }
+}
+
+// Usage example:
+// const spriteDataUrl = EnemySpriteGenerator.generateEnemy1Sprite();
+// EnemySpriteGenerator.downloadEnemy1Sprite();
