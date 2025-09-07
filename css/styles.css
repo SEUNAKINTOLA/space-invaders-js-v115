@@ -1,0 +1,362 @@
+/* Space Invaders JS V115 - Main Stylesheet */
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: #000;
+    color: #00ff00;
+    overflow: hidden;
+    user-select: none;
+}
+
+/* Game Container */
+#gameContainer {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#gameCanvas {
+    border: 2px solid #00ff00;
+    background: #000;
+    display: block;
+}
+
+/* Score Display System */
+.score-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    text-shadow: 0 0 10px #00ff00;
+}
+
+.current-score {
+    font-size: 24px;
+    color: #00ff00;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+}
+
+.high-score {
+    font-size: 18px;
+    color: #ffff00;
+    letter-spacing: 1px;
+    animation: highScoreGlow 2s ease-in-out infinite alternate;
+}
+
+.score-label {
+    font-size: 14px;
+    color: #888;
+    margin-right: 10px;
+}
+
+.score-value {
+    color: inherit;
+    font-weight: bold;
+}
+
+/* Score Animation Effects */
+@keyframes scoreIncrease {
+    0% {
+        transform: scale(1);
+        color: #00ff00;
+    }
+    50% {
+        transform: scale(1.2);
+        color: #ffffff;
+        text-shadow: 0 0 20px #00ff00;
+    }
+    100% {
+        transform: scale(1);
+        color: #00ff00;
+    }
+}
+
+@keyframes highScoreGlow {
+    0% {
+        text-shadow: 0 0 10px #ffff00;
+    }
+    100% {
+        text-shadow: 0 0 20px #ffff00, 0 0 30px #ffff00;
+    }
+}
+
+@keyframes bonusPoints {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        color: #ffff00;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-50px) scale(1.5);
+        color: #ffffff;
+    }
+}
+
+.score-increase {
+    animation: scoreIncrease 0.3s ease-out;
+}
+
+.new-high-score {
+    animation: highScoreGlow 0.5s ease-in-out infinite alternate;
+    color: #ff00ff !important;
+    text-shadow: 0 0 15px #ff00ff !important;
+}
+
+/* Floating Score Indicators */
+.floating-score {
+    position: absolute;
+    font-size: 16px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 200;
+    animation: bonusPoints 1s ease-out forwards;
+}
+
+.floating-score.bonus {
+    color: #ffff00;
+    font-size: 18px;
+}
+
+.floating-score.critical {
+    color: #ff0000;
+    font-size: 20px;
+}
+
+/* Score Multiplier Display */
+.multiplier-display {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    font-size: 20px;
+    color: #ff8800;
+    text-shadow: 0 0 10px #ff8800;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.multiplier-display.active {
+    opacity: 1;
+    animation: multiplierPulse 0.5s ease-in-out;
+}
+
+@keyframes multiplierPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* Wave Completion Bonus */
+.wave-bonus {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 300;
+    font-size: 32px;
+    color: #00ffff;
+    text-shadow: 0 0 20px #00ffff;
+    opacity: 0;
+    animation: waveBonusShow 2s ease-out;
+}
+
+@keyframes waveBonusShow {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.5);
+    }
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    80% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+}
+
+/* Game UI Elements */
+.game-ui {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.lives-display {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    font-size: 18px;
+    color: #ff0000;
+    text-shadow: 0 0 10px #ff0000;
+}
+
+.level-display {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 18px;
+    color: #00ffff;
+    text-shadow: 0 0 10px #00ffff;
+}
+
+/* Mobile Responsive Design */
+@media screen and (max-width: 768px) {
+    .score-container {
+        top: 10px;
+        left: 10px;
+    }
+    
+    .current-score {
+        font-size: 20px;
+        margin-bottom: 5px;
+    }
+    
+    .high-score {
+        font-size: 16px;
+    }
+    
+    .multiplier-display {
+        top: 10px;
+        right: 10px;
+        font-size: 18px;
+    }
+    
+    .wave-bonus {
+        font-size: 28px;
+    }
+    
+    .floating-score {
+        font-size: 14px;
+    }
+    
+    .lives-display,
+    .level-display {
+        font-size: 16px;
+    }
+    
+    .lives-display {
+        bottom: 10px;
+        left: 10px;
+    }
+    
+    .level-display {
+        top: 60px;
+        right: 10px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .current-score {
+        font-size: 18px;
+    }
+    
+    .high-score {
+        font-size: 14px;
+    }
+    
+    .score-label {
+        font-size: 12px;
+    }
+    
+    .multiplier-display {
+        font-size: 16px;
+    }
+    
+    .wave-bonus {
+        font-size: 24px;
+    }
+    
+    .floating-score {
+        font-size: 12px;
+    }
+    
+    .lives-display,
+    .level-display {
+        font-size: 14px;
+    }
+}
+
+/* Performance Optimizations */
+.score-container,
+.multiplier-display,
+.floating-score,
+.wave-bonus {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .score-increase,
+    .new-high-score,
+    .multiplier-display.active,
+    .floating-score,
+    .wave-bonus {
+        animation: none;
+    }
+    
+    .high-score {
+        animation: none;
+        text-shadow: 0 0 10px #ffff00;
+    }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    .current-score {
+        color: #ffffff;
+        text-shadow: 2px 2px 0 #000000;
+    }
+    
+    .high-score {
+        color: #ffff00;
+        text-shadow: 2px 2px 0 #000000;
+    }
+    
+    .multiplier-display {
+        color: #ff8800;
+        text-shadow: 2px 2px 0 #000000;
+    }
+}
+
+/* Print Styles (for debugging) */
+@media print {
+    .score-container,
+    .multiplier-display,
+    .floating-score,
+    .wave-bonus,
+    .lives-display,
+    .level-display {
+        position: static;
+        color: #000;
+        text-shadow: none;
+        animation: none;
+    }
+}
