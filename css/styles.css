@@ -1,0 +1,401 @@
+/* Space Invaders JS V115 - Main Styles */
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: #000;
+    color: #00ff00;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Game Canvas */
+#gameCanvas {
+    display: block;
+    margin: 0 auto;
+    border: 2px solid #00ff00;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+/* Game Container */
+.game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle, #001122 0%, #000000 100%);
+}
+
+/* Touch Controls Container */
+.touch-controls {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    display: none;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.touch-controls.active {
+    display: flex;
+    pointer-events: auto;
+}
+
+/* Movement Controls */
+.movement-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.move-btn {
+    width: 60px;
+    height: 60px;
+    border: 2px solid #00ff00;
+    background: rgba(0, 255, 0, 0.1);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #00ff00;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.1s ease;
+    touch-action: manipulation;
+}
+
+.move-btn:active {
+    background: rgba(0, 255, 0, 0.3);
+    transform: scale(0.95);
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.move-btn.pressed {
+    background: rgba(0, 255, 0, 0.4);
+    box-shadow: inset 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+/* Shoot Button */
+.shoot-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+}
+
+.shoot-btn {
+    width: 80px;
+    height: 80px;
+    border: 3px solid #ff0000;
+    background: rgba(255, 0, 0, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: #ff0000;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.1s ease;
+    touch-action: manipulation;
+}
+
+.shoot-btn:active {
+    background: rgba(255, 0, 0, 0.3);
+    transform: scale(0.9);
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+}
+
+.shoot-btn.pressed {
+    background: rgba(255, 0, 0, 0.4);
+    box-shadow: inset 0 0 15px rgba(255, 0, 0, 0.3);
+}
+
+/* Touch Feedback Animations */
+@keyframes touchFeedback {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.touch-feedback {
+    animation: touchFeedback 0.2s ease-out;
+}
+
+/* Ripple Effect for Touch */
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(0, 255, 0, 0.3);
+    transform: scale(0);
+    animation: rippleEffect 0.3s ease-out;
+    pointer-events: none;
+}
+
+@keyframes rippleEffect {
+    to {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* HUD Elements */
+.game-hud {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 500;
+    font-size: 18px;
+    color: #00ff00;
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+.score-display,
+.lives-display {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px 15px;
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+}
+
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+    .touch-controls {
+        display: flex;
+    }
+    
+    #gameCanvas {
+        width: 100vw;
+        height: calc(100vh - 120px);
+        border: none;
+    }
+    
+    .game-container {
+        padding-bottom: 120px;
+    }
+    
+    .game-hud {
+        font-size: 16px;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+    }
+    
+    .score-display,
+    .lives-display {
+        padding: 8px 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .move-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+    
+    .shoot-btn {
+        width: 70px;
+        height: 70px;
+        font-size: 24px;
+    }
+    
+    .movement-controls {
+        bottom: 15px;
+        left: 15px;
+        gap: 8px;
+    }
+    
+    .shoot-controls {
+        bottom: 15px;
+        right: 15px;
+    }
+    
+    .game-hud {
+        font-size: 14px;
+    }
+}
+
+/* Landscape Mobile Layout */
+@media (max-height: 500px) and (orientation: landscape) {
+    .touch-controls {
+        height: 80px;
+    }
+    
+    .game-container {
+        padding-bottom: 80px;
+    }
+    
+    .move-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 18px;
+    }
+    
+    .shoot-btn {
+        width: 60px;
+        height: 60px;
+        font-size: 20px;
+    }
+    
+    .movement-controls,
+    .shoot-controls {
+        bottom: 10px;
+    }
+    
+    .movement-controls {
+        left: 10px;
+    }
+    
+    .shoot-controls {
+        right: 10px;
+    }
+}
+
+/* High DPI Display Support */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    #gameCanvas {
+        image-rendering: pixelated;
+    }
+}
+
+/* Touch-specific Styles */
+@media (hover: none) and (pointer: coarse) {
+    .move-btn,
+    .shoot-btn {
+        border-width: 3px;
+    }
+    
+    .move-btn:hover {
+        background: rgba(0, 255, 0, 0.1);
+    }
+    
+    .shoot-btn:hover {
+        background: rgba(255, 0, 0, 0.1);
+    }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .move-btn,
+    .shoot-btn {
+        transition: none;
+    }
+    
+    .touch-feedback,
+    .ripple {
+        animation: none;
+    }
+}
+
+/* Focus States for Accessibility */
+.move-btn:focus,
+.shoot-btn:focus {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
+/* Loading State */
+.loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #00ff00;
+    font-size: 24px;
+    text-align: center;
+    z-index: 2000;
+}
+
+/* Game Over Overlay */
+.game-over {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1500;
+}
+
+.game-over.active {
+    display: flex;
+}
+
+.game-over-content {
+    text-align: center;
+    color: #00ff00;
+    font-size: 24px;
+    padding: 40px;
+    border: 2px solid #00ff00;
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: 8px;
+}
+
+/* Button Hover Effects for Desktop */
+@media (hover: hover) and (pointer: fine) {
+    .move-btn:hover {
+        background: rgba(0, 255, 0, 0.2);
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+    }
+    
+    .shoot-btn:hover {
+        background: rgba(255, 0, 0, 0.2);
+        box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+    }
+}
+
+/* Performance Optimizations */
+.move-btn,
+.shoot-btn {
+    will-change: transform, background-color;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* Prevent text selection on game elements */
+.game-container,
+.touch-controls,
+.game-hud {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
