@@ -1,0 +1,82 @@
+/**
+ * Generates a player spaceship sprite on a canvas
+ * @param {number} size - Size of the sprite (default: 32)
+ * @returns {HTMLCanvasElement} Canvas element with the sprite
+ */
+function generatePlayerSprite(size = 32) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  // Clear background (transparent)
+  ctx.clearRect(0, 0, size, size);
+  
+  // Main ship body gradient
+  const shipGradient = ctx.createLinearGradient(0, 0, 0, size);
+  shipGradient.addColorStop(0, '#4A90E2');
+  shipGradient.addColorStop(0.5, '#357ABD');
+  shipGradient.addColorStop(1, '#2E5F8A');
+  
+  // Draw main body
+  ctx.fillStyle = shipGradient;
+  ctx.strokeStyle = '#1E3A5F';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(size/2, size * 0.0625); // Top point
+  ctx.lineTo(size * 0.375, size * 0.625); // Left body
+  ctx.lineTo(size * 0.25, size * 0.875); // Left bottom
+  ctx.lineTo(size * 0.75, size * 0.875); // Right bottom
+  ctx.lineTo(size * 0.625, size * 0.625); // Right body
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  
+  // Draw wings
+  ctx.fillStyle = '#2E5F8A';
+  ctx.lineWidth = 0.5;
+  
+  // Left wing
+  ctx.beginPath();
+  ctx.moveTo(size * 0.125, size * 0.5625);
+  ctx.lineTo(size * 0.375, size * 0.5);
+  ctx.lineTo(size * 0.375, size * 0.75);
+  ctx.lineTo(size * 0.1875, size * 0.8125);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  
+  // Right wing
+  ctx.beginPath();
+  ctx.moveTo(size * 0.875, size * 0.5625);
+  ctx.lineTo(size * 0.625, size * 0.5);
+  ctx.lineTo(size * 0.625, size * 0.75);
+  ctx.lineTo(size * 0.8125, size * 0.8125);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  
+  // Draw cockpit
+  const cockpitGradient = ctx.createLinearGradient(0, size * 0.25, 0, size * 0.625);
+  cockpitGradient.addColorStop(0, 'rgba(135, 206, 235, 0.8)');
+  cockpitGradient.addColorStop(1, 'rgba(70, 130, 180, 0.9)');
+  
+  ctx.fillStyle = cockpitGradient;
+  ctx.strokeStyle = '#1E3A5F';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.ellipse(size/2, size * 0.375, size * 0.09375, size * 0.1875, 0, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.stroke();
+  
+  // Draw engine exhausts
+  ctx.fillStyle = 'rgba(255, 107, 53, 0.8)';
+  ctx.fillRect(size * 0.3125, size * 0.875, size * 0.0625, size * 0.0625);
+  ctx.fillRect(size * 0.625, size * 0.875, size * 0.0625, size * 0.0625);
+  
+  return canvas;
+}
+
+// Usage example:
+// const playerSprite = generatePlayerSprite(32);
+// document.body.appendChild(playerSprite);
