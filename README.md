@@ -1,2 +1,15 @@
-# space-invaders-js-v115
-Develop a complete browser-based Space Invaders game using JavaScript, HTML5, and CSS. The game should feature player controls, enemy waves, scoring, sound effects, and a responsive UI. It must be playable on both desktop and mobile browsers.
+space-invaders-js-v115/
+├── assets/                 # Game assets (sprites, audio)
+│   ├── sprites/           # Image assets
+│   └── audio/             # Sound effects and music
+├── css/                   # Stylesheets
+├── js/                    # JavaScript modules
+├── tests/                 # Test files
+│   ├── unit/             # Unit tests
+│   ├── integration/      # Integration tests
+│   └── e2e/              # End-to-end tests
+├── scripts/              # Build and deployment scripts
+├── docs/                 # Documentation
+├── .github/              # GitHub workflows and templates
+├── config/               # Configuration files
+└── public/               # Static assets
