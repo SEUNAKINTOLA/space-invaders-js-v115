@@ -1,629 +1,761 @@
 /**
- * Main Game Class - Space Invaders JS V115
- * Manages game state, player entity, input systems, and game loop
+ * Space Invaders Game - Main Game Class
+ * Implements enemy wave system with movement patterns, collision detection,
+ * and progressive difficulty scaling
  */
+
 class Game {
-    constructor(canvasId) {
-        this.canvas = document.getElementById(canvasId);
-        this.ctx = this.canvas.getContext('2d');
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = canvas.width;
+        this.height = canvas.height;
         
         // Game state
-        this.isRunning = false;
-        this.lastFrameTime = 0;
-        this.targetFPS = 60;
-        this.frameInterval = 1000 / this.targetFPS;
+        this.gameRunning = false;
+        this.gameOver = false;
+        this.score = 0;
+        this.currentWave = 1;
+        this.lastTime = 0;
+        this.frameCount = 0;
+        this.fps = 0;
         
-        // Initialize game systems
-        this.inputManager = new InputManager();
-        this.player = new Player(this.canvas.width / 2, this.canvas.height - 60);
-        this.projectiles = [];
+        // Player
+        this.player = {
+            x: this.width / 2 - 25,
+            y: this.height - 60,
+            width: 50,
+            height: 30,
+            speed: 5,
+            health: 3
+        };
         
-        // Bind methods
-        this.gameLoop = this.gameLoop.bind(this);
-        this.handleResize = this.handleResize.bind(this);
+        // Input handling
+        this.keys = {};
+        this.setupInput();
         
-        // Setup canvas and event listeners
-        this.setupCanvas();
-        this.setupEventListeners();
+        // Game systems
+        this.bullets = [];
+        this.enemies = [];
+        this.explosions = [];
+        this.particles = [];
         
-        // Initialize input system
-        this.inputManager.initialize(this.canvas);
+        // Enemy wave configuration
+        this.waveConfig = {
+            baseEnemyCount: 20,
+            enemySpeedBase: 1,
+            enemySpeedIncrement: 0.2,
+            waveDelay: 2000,
+            formationSpacing: 60
+        };
+        
+        // Enemy movement
+        this.enemyDirection = 1;
+        this.enemyDropDistance = 40;
+        this.enemyMoveTimer = 0;
+        this.enemyMoveInterval = 800;
+        
+        // Collision system
+        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
+        
+        // Performance monitoring
+        this.performanceMetrics = {
+            frameTime: 0,
+            updateTime: 0,
+            renderTime: 0
+        };
+        
+        this.initializeWave();
     }
     
     /**
-     * Setup canvas properties and responsive sizing
+     * Initialize input event listeners
      */
-    setupCanvas() {
-        this.canvas.width = Math.min(800, window.innerWidth - 20);
-        this.canvas.height = Math.min(600, window.innerHeight - 20);
-        this.ctx.imageSmoothingEnabled = false;
-    }
-    
-    /**
-     * Setup event listeners for window resize
-     */
-    setupEventListeners() {
-        window.addEventListener('resize', this.handleResize);
-    }
-    
-    /**
-     * Handle window resize events
-     */
-    handleResize() {
-        this.setupCanvas();
-        // Update player boundaries
-        this.player.setBoundaries(0, this.canvas.width, 0, this.canvas.height);
-    }
-    
-    /**
-     * Start the game loop
-     */
-    start() {
-        if (!this.isRunning) {
-            this.isRunning = true;
-            this.lastFrameTime = performance.now();
-            requestAnimationFrame(this.gameLoop);
-        }
-    }
-    
-    /**
-     * Stop the game loop
-     */
-    stop() {
-        this.isRunning = false;
-    }
-    
-    /**
-     * Main game loop with frame rate control
-     */
-    gameLoop(currentTime) {
-        if (!this.isRunning) return;
-        
-        const deltaTime = currentTime - this.lastFrameTime;
-        
-        if (deltaTime >= this.frameInterval) {
-            this.update(deltaTime);
-            this.render();
-            this.lastFrameTime = currentTime - (deltaTime % this.frameInterval);
-        }
-        
-        requestAnimationFrame(this.gameLoop);
-    }
-    
-    /**
-     * Update game state
-     */
-    update(deltaTime) {
-        // Update input state
-        this.inputManager.update();
-        
-        // Handle player input
-        this.handlePlayerInput();
-        
-        // Update player
-        this.player.update(deltaTime);
-        
-        // Update projectiles
-        this.updateProjectiles(deltaTime);
-        
-        // Handle player shooting
-        if (this.inputManager.isActionPressed('shoot') && this.player.canShoot()) {
-            const projectile = this.player.shoot();
-            if (projectile) {
-                this.projectiles.push(projectile);
+    setupInput() {
+        document.addEventListener('keydown', (e) => {
+            this.keys[e.code] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                this.shoot();
             }
-        }
-    }
-    
-    /**
-     * Handle player input for movement
-     */
-    handlePlayerInput() {
-        let moveDirection = 0;
-        
-        if (this.inputManager.isActionPressed('moveLeft')) {
-            moveDirection -= 1;
-        }
-        if (this.inputManager.isActionPressed('moveRight')) {
-            moveDirection += 1;
-        }
-        
-        this.player.setMoveDirection(moveDirection);
-    }
-    
-    /**
-     * Update all projectiles
-     */
-    updateProjectiles(deltaTime) {
-        for (let i = this.projectiles.length - 1; i >= 0; i--) {
-            const projectile = this.projectiles[i];
-            projectile.update(deltaTime);
-            
-            // Remove projectiles that are off-screen
-            if (projectile.y < -10 || projectile.y > this.canvas.height + 10) {
-                this.projectiles.splice(i, 1);
-            }
-        }
-    }
-    
-    /**
-     * Render all game objects
-     */
-    render() {
-        // Clear canvas
-        this.ctx.fillStyle = '#000011';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Render player
-        this.player.render(this.ctx);
-        
-        // Render projectiles
-        this.projectiles.forEach(projectile => {
-            projectile.render(this.ctx);
         });
         
-        // Render touch controls on mobile
-        if (this.inputManager.touchControls) {
-            this.inputManager.touchControls.render(this.ctx);
+        document.addEventListener('keyup', (e) => {
+            this.keys[e.code] = false;
+        });
+    }
+    
+    /**
+     * Initialize a new enemy wave with formation patterns
+     */
+    initializeWave() {
+        this.enemies = [];
+        const enemyCount = this.waveConfig.baseEnemyCount + (this.currentWave - 1) * 5;
+        const enemySpeed = this.waveConfig.enemySpeedBase + (this.currentWave - 1) * this.waveConfig.enemySpeedIncrement;
+        
+        // Create formation pattern
+        const rows = Math.ceil(enemyCount / 10);
+        const cols = Math.min(10, enemyCount);
+        const startX = (this.width - (cols * this.waveConfig.formationSpacing)) / 2;
+        const startY = 50;
+        
+        let enemyIndex = 0;
+        for (let row = 0; row < rows && enemyIndex < enemyCount; row++) {
+            for (let col = 0; col < cols && enemyIndex < enemyCount; col++) {
+                const enemyType = this.getEnemyType(row);
+                this.enemies.push({
+                    id: `enemy_${enemyIndex}`,
+                    x: startX + col * this.waveConfig.formationSpacing,
+                    y: startY + row * 50,
+                    width: 40,
+                    height: 30,
+                    speed: enemySpeed,
+                    type: enemyType,
+                    health: enemyType.health,
+                    maxHealth: enemyType.health,
+                    points: enemyType.points,
+                    color: enemyType.color,
+                    lastShot: 0,
+                    shootInterval: enemyType.shootInterval,
+                    destroyed: false
+                });
+                enemyIndex++;
+            }
+        }
+        
+        // Reset enemy movement
+        this.enemyDirection = 1;
+        this.enemyMoveTimer = 0;
+    }
+    
+    /**
+     * Get enemy type configuration based on row position
+     */
+    getEnemyType(row) {
+        const types = [
+            { health: 1, points: 30, color: '#ff4444', shootInterval: 3000 }, // Fast scouts
+            { health: 2, points: 20, color: '#44ff44', shootInterval: 2500 }, // Medium fighters
+            { health: 3, points: 10, color: '#4444ff', shootInterval: 2000 }  // Heavy tanks
+        ];
+        return types[Math.min(row, types.length - 1)];
+    }
+    
+    /**
+     * Player shooting mechanism
+     */
+    shoot() {
+        if (!this.gameRunning || this.gameOver) return;
+        
+        const now = Date.now();
+        if (now - (this.player.lastShot || 0) < 200) return; // Rate limiting
+        
+        this.bullets.push({
+            x: this.player.x + this.player.width / 2 - 2,
+            y: this.player.y,
+            width: 4,
+            height: 10,
+            speed: 8,
+            owner: 'player',
+            damage: 1
+        });
+        
+        this.player.lastShot = now;
+    }
+    
+    /**
+     * Enemy shooting mechanism
+     */
+    enemyShoot(enemy) {
+        const now = Date.now();
+        if (now - enemy.lastShot < enemy.shootInterval) return;
+        
+        // Random chance to shoot
+        if (Math.random() < 0.1) {
+            this.bullets.push({
+                x: enemy.x + enemy.width / 2 - 2,
+                y: enemy.y + enemy.height,
+                width: 4,
+                height: 8,
+                speed: 3,
+                owner: 'enemy',
+                damage: 1,
+                color: '#ff6666'
+            });
+            enemy.lastShot = now;
         }
     }
     
     /**
-     * Cleanup resources
+     * Update game state - main game loop logic
      */
-    destroy() {
-        this.stop();
-        this.inputManager.destroy();
-        window.removeEventListener('resize', this.handleResize);
-    }
-}
-
-/**
- * Player Entity Class
- * Handles player spaceship rendering, movement, and shooting
- */
-class Player {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 40;
-        this.height = 30;
-        this.speed = 300; // pixels per second
-        this.moveDirection = 0; // -1 left, 0 stop, 1 right
+    update(deltaTime) {
+        if (!this.gameRunning || this.gameOver) return;
         
-        // Shooting properties
-        this.shootCooldown = 200; // milliseconds
-        this.lastShotTime = 0;
+        const updateStart = performance.now();
         
-        // Boundaries
-        this.minX = 0;
-        this.maxX = 800;
-        this.minY = 0;
-        this.maxY = 600;
+        this.updatePlayer(deltaTime);
+        this.updateBullets(deltaTime);
+        this.updateEnemies(deltaTime);
+        this.updateCollisions();
+        this.updateParticles(deltaTime);
+        this.checkGameState();
         
-        // Visual properties
-        this.color = '#00ff00';
-        this.thrusterColor = '#ff4400';
-        this.showThrusters = false;
-    }
-    
-    /**
-     * Set movement boundaries
-     */
-    setBoundaries(minX, maxX, minY, maxY) {
-        this.minX = minX;
-        this.maxX = maxX;
-        this.minY = minY;
-        this.maxY = maxY;
-    }
-    
-    /**
-     * Set movement direction
-     */
-    setMoveDirection(direction) {
-        this.moveDirection = Math.max(-1, Math.min(1, direction));
-        this.showThrusters = Math.abs(direction) > 0;
+        this.performanceMetrics.updateTime = performance.now() - updateStart;
     }
     
     /**
      * Update player position and state
      */
-    update(deltaTime) {
-        // Update position based on movement direction
-        if (this.moveDirection !== 0) {
-            this.x += this.moveDirection * this.speed * (deltaTime / 1000);
+    updatePlayer(deltaTime) {
+        // Player movement
+        if (this.keys['ArrowLeft'] || this.keys['KeyA']) {
+            this.player.x = Math.max(0, this.player.x - this.player.speed);
+        }
+        if (this.keys['ArrowRight'] || this.keys['KeyD']) {
+            this.player.x = Math.min(this.width - this.player.width, this.player.x + this.player.speed);
+        }
+        
+        // Validate player position
+        this.player.x = Math.max(0, Math.min(this.width - this.player.width, this.player.x));
+        this.player.y = Math.max(0, Math.min(this.height - this.player.height, this.player.y));
+    }
+    
+    /**
+     * Update bullet positions and lifecycle
+     */
+    updateBullets(deltaTime) {
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const bullet = this.bullets[i];
             
-            // Keep player within boundaries
-            this.x = Math.max(this.minX + this.width / 2, 
-                            Math.min(this.maxX - this.width / 2, this.x));
-        }
-    }
-    
-    /**
-     * Check if player can shoot
-     */
-    canShoot() {
-        const currentTime = Date.now();
-        return currentTime - this.lastShotTime >= this.shootCooldown;
-    }
-    
-    /**
-     * Create a projectile
-     */
-    shoot() {
-        if (!this.canShoot()) return null;
-        
-        this.lastShotTime = Date.now();
-        return new Projectile(this.x, this.y - this.height / 2, 0, -500, 'player');
-    }
-    
-    /**
-     * Render player spaceship
-     */
-    render(ctx) {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        
-        // Draw main body
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.moveTo(0, -this.height / 2);
-        ctx.lineTo(-this.width / 2, this.height / 2);
-        ctx.lineTo(-this.width / 4, this.height / 3);
-        ctx.lineTo(this.width / 4, this.height / 3);
-        ctx.lineTo(this.width / 2, this.height / 2);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Draw cockpit
-        ctx.fillStyle = '#0088ff';
-        ctx.beginPath();
-        ctx.arc(0, -this.height / 4, this.width / 6, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Draw thrusters when moving
-        if (this.showThrusters) {
-            ctx.fillStyle = this.thrusterColor;
-            ctx.beginPath();
-            ctx.moveTo(-this.width / 4, this.height / 3);
-            ctx.lineTo(-this.width / 6, this.height / 2 + 8);
-            ctx.lineTo(-this.width / 8, this.height / 3);
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.beginPath();
-            ctx.moveTo(this.width / 4, this.height / 3);
-            ctx.lineTo(this.width / 6, this.height / 2 + 8);
-            ctx.lineTo(this.width / 8, this.height / 3);
-            ctx.closePath();
-            ctx.fill();
-        }
-        
-        ctx.restore();
-    }
-}
-
-/**
- * Projectile Class
- * Handles projectile movement and rendering
- */
-class Projectile {
-    constructor(x, y, vx, vy, type = 'player') {
-        this.x = x;
-        this.y = y;
-        this.vx = vx; // velocity x
-        this.vy = vy; // velocity y
-        this.type = type;
-        this.width = 4;
-        this.height = 12;
-        this.color = type === 'player' ? '#ffff00' : '#ff0000';
-    }
-    
-    /**
-     * Update projectile position
-     */
-    update(deltaTime) {
-        this.x += this.vx * (deltaTime / 1000);
-        this.y += this.vy * (deltaTime / 1000);
-    }
-    
-    /**
-     * Render projectile
-     */
-    render(ctx) {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, 
-                    this.width, this.height);
-        
-        // Add glow effect
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 4;
-        ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, 
-                    this.width, this.height);
-        ctx.shadowBlur = 0;
-    }
-}
-
-/**
- * Input Manager Class
- * Handles keyboard and touch input with action mapping
- */
-class InputManager {
-    constructor() {
-        this.keys = {};
-        this.actions = {};
-        this.touchControls = null;
-        
-        // Action mappings
-        this.keyMappings = {
-            'ArrowLeft': 'moveLeft',
-            'KeyA': 'moveLeft',
-            'ArrowRight': 'moveRight',
-            'KeyD': 'moveRight',
-            'Space': 'shoot',
-            'KeyW': 'shoot',
-            'ArrowUp': 'shoot'
-        };
-        
-        // Bind event handlers
-        this.handleKeyDown = this.handleKeyDown.bind(this);
-        this.handleKeyUp = this.handleKeyUp.bind(this);
-    }
-    
-    /**
-     * Initialize input system
-     */
-    initialize(canvas) {
-        // Setup keyboard events
-        document.addEventListener('keydown', this.handleKeyDown);
-        document.addEventListener('keyup', this.handleKeyUp);
-        
-        // Setup touch controls for mobile
-        if (this.isMobileDevice()) {
-            this.touchControls = new TouchControls(canvas);
-        }
-    }
-    
-    /**
-     * Check if device is mobile
-     */
-    isMobileDevice() {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-               ('ontouchstart' in window);
-    }
-    
-    /**
-     * Handle keydown events
-     */
-    handleKeyDown(event) {
-        // Prevent default for game keys
-        if (this.keyMappings[event.code]) {
-            event.preventDefault();
-        }
-        
-        this.keys[event.code] = true;
-    }
-    
-    /**
-     * Handle keyup events
-     */
-    handleKeyUp(event) {
-        this.keys[event.code] = false;
-    }
-    
-    /**
-     * Update input state
-     */
-    update() {
-        // Update action states based on key mappings
-        for (const [key, action] of Object.entries(this.keyMappings)) {
-            this.actions[action] = this.keys[key] || false;
-        }
-        
-        // Update touch controls
-        if (this.touchControls) {
-            this.touchControls.update();
-            
-            // Merge touch input with actions
-            const touchActions = this.touchControls.getActions();
-            for (const [action, pressed] of Object.entries(touchActions)) {
-                this.actions[action] = this.actions[action] || pressed;
-            }
-        }
-    }
-    
-    /**
-     * Check if action is currently pressed
-     */
-    isActionPressed(action) {
-        return this.actions[action] || false;
-    }
-    
-    /**
-     * Cleanup input system
-     */
-    destroy() {
-        document.removeEventListener('keydown', this.handleKeyDown);
-        document.removeEventListener('keyup', this.handleKeyUp);
-        
-        if (this.touchControls) {
-            this.touchControls.destroy();
-        }
-    }
-}
-
-/**
- * Touch Controls Class
- * Provides virtual buttons for mobile devices
- */
-class TouchControls {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.buttons = {};
-        this.touches = {};
-        
-        // Button configurations
-        this.buttonConfig = {
-            moveLeft: { x: 60, y: canvas.height - 80, width: 60, height: 60, label: '←' },
-            moveRight: { x: 140, y: canvas.height - 80, width: 60, height: 60, label: '→' },
-            shoot: { x: canvas.width - 80, y: canvas.height - 80, width: 60, height: 60, label: '●' }
-        };
-        
-        // Initialize buttons
-        for (const [action, config] of Object.entries(this.buttonConfig)) {
-            this.buttons[action] = { ...config, pressed: false };
-        }
-        
-        // Bind touch events
-        this.handleTouchStart = this.handleTouchStart.bind(this);
-        this.handleTouchMove = this.handleTouchMove.bind(this);
-        this.handleTouchEnd = this.handleTouchEnd.bind(this);
-        
-        this.setupTouchEvents();
-    }
-    
-    /**
-     * Setup touch event listeners
-     */
-    setupTouchEvents() {
-        this.canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
-        this.canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
-        this.canvas.addEventListener('touchend', this.handleTouchEnd, { passive: false });
-        this.canvas.addEventListener('touchcancel', this.handleTouchEnd, { passive: false });
-    }
-    
-    /**
-     * Handle touch start events
-     */
-    handleTouchStart(event) {
-        event.preventDefault();
-        
-        const rect = this.canvas.getBoundingClientRect();
-        
-        for (const touch of event.changedTouches) {
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            
-            // Check which button was touched
-            for (const [action, button] of Object.entries(this.buttons)) {
-                if (this.isPointInButton(x, y, button)) {
-                    button.pressed = true;
-                    this.touches[touch.identifier] = action;
-                    break;
+            if (bullet.owner === 'player') {
+                bullet.y -= bullet.speed;
+                if (bullet.y < -bullet.height) {
+                    this.bullets.splice(i, 1);
+                }
+            } else {
+                bullet.y += bullet.speed;
+                if (bullet.y > this.height) {
+                    this.bullets.splice(i, 1);
                 }
             }
         }
     }
     
     /**
-     * Handle touch move events
+     * Update enemy positions and behavior with formation movement
      */
-    handleTouchMove(event) {
-        event.preventDefault();
+    updateEnemies(deltaTime) {
+        if (this.enemies.length === 0) return;
         
-        const rect = this.canvas.getBoundingClientRect();
+        this.enemyMoveTimer += deltaTime;
         
-        for (const touch of event.changedTouches) {
-            const touchAction = this.touches[touch.identifier];
-            if (!touchAction) continue;
+        // Formation movement logic
+        if (this.enemyMoveTimer >= this.enemyMoveInterval) {
+            let shouldDrop = false;
             
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            const button = this.buttons[touchAction];
+            // Check if any enemy hits screen edge
+            for (const enemy of this.enemies) {
+                if (!enemy.destroyed) {
+                    if ((this.enemyDirection > 0 && enemy.x + enemy.width >= this.width - 10) ||
+                        (this.enemyDirection < 0 && enemy.x <= 10)) {
+                        shouldDrop = true;
+                        break;
+                    }
+                }
+            }
             
-            // Update button state based on touch position
-            button.pressed = this.isPointInButton(x, y, button);
+            // Move enemies
+            for (const enemy of this.enemies) {
+                if (!enemy.destroyed) {
+                    if (shouldDrop) {
+                        enemy.y += this.enemyDropDistance;
+                    } else {
+                        enemy.x += this.enemyDirection * 20;
+                    }
+                    
+                    // Enemy shooting
+                    this.enemyShoot(enemy);
+                }
+            }
+            
+            if (shouldDrop) {
+                this.enemyDirection *= -1;
+                // Increase speed slightly after each drop
+                this.enemyMoveInterval = Math.max(200, this.enemyMoveInterval - 50);
+            }
+            
+            this.enemyMoveTimer = 0;
         }
+        
+        // Remove destroyed enemies
+        this.enemies = this.enemies.filter(enemy => !enemy.destroyed);
     }
     
     /**
-     * Handle touch end events
+     * Comprehensive collision detection system
      */
-    handleTouchEnd(event) {
-        event.preventDefault();
+    updateCollisions() {
+        // Clear and rebuild quad tree for spatial partitioning
+        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
         
-        for (const touch of event.changedTouches) {
-            const touchAction = this.touches[touch.identifier];
-            if (touchAction) {
-                this.buttons[touchAction].pressed = false;
-                delete this.touches[touch.identifier];
+        // Add entities to quad tree
+        this.enemies.forEach(enemy => {
+            if (!enemy.destroyed) {
+                this.collisionQuadTree.insert(enemy);
+            }
+        });
+        
+        // Player bullet vs enemy collisions
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const bullet = this.bullets[i];
+            
+            if (bullet.owner === 'player') {
+                const nearbyEnemies = this.collisionQuadTree.retrieve(bullet);
+                
+                for (const enemy of nearbyEnemies) {
+                    if (this.checkCollision(bullet, enemy)) {
+                        // Damage enemy
+                        enemy.health -= bullet.damage;
+                        
+                        // Create hit effect
+                        this.createHitEffect(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        
+                        if (enemy.health <= 0) {
+                            // Enemy destroyed
+                            enemy.destroyed = true;
+                            this.score += enemy.points;
+                            this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        }
+                        
+                        // Remove bullet
+                        this.bullets.splice(i, 1);
+                        break;
+                    }
+                }
+            } else if (bullet.owner === 'enemy') {
+                // Enemy bullet vs player collision
+                if (this.checkCollision(bullet, this.player)) {
+                    this.player.health -= bullet.damage;
+                    this.bullets.splice(i, 1);
+                    this.createHitEffect(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2);
+                    
+                    if (this.player.health <= 0) {
+                        this.triggerGameOver();
+                    }
+                }
+            }
+        }
+        
+        // Enemy vs player collision (game over)
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed && this.checkCollision(enemy, this.player)) {
+                this.triggerGameOver();
+                break;
             }
         }
     }
     
     /**
-     * Check if point is within button bounds
+     * AABB collision detection
      */
-    isPointInButton(x, y, button) {
-        return x >= button.x && x <= button.x + button.width &&
-               y >= button.y && y <= button.y + button.height;
+    checkCollision(rect1, rect2) {
+        return rect1.x < rect2.x + rect2.width &&
+               rect1.x + rect1.width > rect2.x &&
+               rect1.y < rect2.y + rect2.height &&
+               rect1.y + rect1.height > rect2.y;
     }
     
     /**
-     * Update touch controls state
+     * Create visual hit effect
      */
-    update() {
-        // Touch state is updated in event handlers
-    }
-    
-    /**
-     * Get current action states
-     */
-    getActions() {
-        const actions = {};
-        for (const [action, button] of Object.entries(this.buttons)) {
-            actions[action] = button.pressed;
+    createHitEffect(x, y) {
+        for (let i = 0; i < 5; i++) {
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4,
+                life: 30,
+                maxLife: 30,
+                color: '#ffff00',
+                size: 3
+            });
         }
-        return actions;
     }
     
     /**
-     * Render touch control buttons
+     * Create explosion effect
      */
-    render(ctx) {
-        ctx.save();
-        
-        for (const [action, button] of Object.entries(this.buttons)) {
-            // Button background
-            ctx.fillStyle = button.pressed ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)';
-            ctx.fillRect(button.x, button.y, button.width, button.height);
+    createExplosion(x, y) {
+        for (let i = 0; i < 10; i++) {
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8,
+                life: 60,
+                maxLife: 60,
+                color: '#ff4400',
+                size: 5
+            });
+        }
+    }
+    
+    /**
+     * Update particle effects
+     */
+    updateParticles(deltaTime) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
             
-            // Button border
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(button.x, button.y, button.width, button.height);
-            
-            // Button label
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(button.label, 
-                        button.x + button.width / 2, 
-                        button.y + button.height / 2);
+            if (particle.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
+    }
+    
+    /**
+     * Check game state conditions
+     */
+    checkGameState() {
+        // Check for wave completion
+        const aliveEnemies = this.enemies.filter(enemy => !enemy.destroyed);
+        if (aliveEnemies.length === 0) {
+            this.currentWave++;
+            setTimeout(() => {
+                this.initializeWave();
+            }, this.waveConfig.waveDelay);
         }
         
-        ctx.restore();
+        // Check if enemies reached player level (game over condition)
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed && enemy.y + enemy.height >= this.player.y) {
+                this.triggerGameOver();
+                break;
+            }
+        }
     }
     
     /**
-     * Cleanup touch controls
+     * Trigger game over state
      */
-    destroy() {
-        this.canvas.removeEventListener('touchstart', this.handleTouchStart);
-        this.canvas.removeEventListener('touchmove', this.handleTouchMove);
-        this.canvas.removeEventListener('touchend', this.handleTouchEnd);
-        this.canvas.removeEventListener('touchcancel', this.handleTouchEnd);
+    triggerGameOver() {
+        this.gameOver = true;
+        this.gameRunning = false;
+    }
+    
+    /**
+     * Render all game elements
+     */
+    render() {
+        if (!this.ctx) return;
+        
+        const renderStart = performance.now();
+        
+        // Clear canvas
+        this.ctx.fillStyle = '#000011';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        
+        if (this.gameRunning && !this.gameOver) {
+            this.renderPlayer();
+            this.renderBullets();
+            this.renderEnemies();
+            this.renderParticles();
+            this.renderUI();
+        } else if (this.gameOver) {
+            this.renderGameOver();
+        } else {
+            this.renderStartScreen();
+        }
+        
+        this.performanceMetrics.renderTime = performance.now() - renderStart;
+    }
+    
+    /**
+     * Render player sprite
+     */
+    renderPlayer() {
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
+        
+        // Player health indicator
+        for (let i = 0; i < this.player.health; i++) {
+            this.ctx.fillStyle = '#ff0000';
+            this.ctx.fillRect(10 + i * 15, this.height - 30, 10, 10);
+        }
+    }
+    
+    /**
+     * Render all bullets with smooth animation
+     */
+    renderBullets() {
+        for (const bullet of this.bullets) {
+            this.ctx.fillStyle = bullet.color || '#ffffff';
+            this.ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        }
+    }
+    
+    /**
+     * Render enemies with health indicators
+     */
+    renderEnemies() {
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed) {
+                // Enemy body
+                this.ctx.fillStyle = enemy.color;
+                this.ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                
+                // Health bar for damaged enemies
+                if (enemy.health < enemy.maxHealth) {
+                    const healthPercent = enemy.health / enemy.maxHealth;
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width, 4);
+                    this.ctx.fillStyle = '#00ff00';
+                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width * healthPercent, 4);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Render particle effects
+     */
+    renderParticles() {
+        for (const particle of this.particles) {
+            const alpha = particle.life / particle.maxLife;
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = particle.color;
+            this.ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, 
+                            particle.size, particle.size);
+        }
+        this.ctx.globalAlpha = 1;
+    }
+    
+    /**
+     * Render game UI elements
+     */
+    renderUI() {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Score: ${this.score}`, 10, 30);
+        this.ctx.fillText(`Wave: ${this.currentWave}`, 10, 60);
+        this.ctx.fillText(`Enemies: ${this.enemies.filter(e => !e.destroyed).length}`, 10, 90);
+        
+        // FPS counter
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText(`FPS: ${this.fps}`, this.width - 80, 30);
+    }
+    
+    /**
+     * Render game over screen
+     */
+    renderGameOver() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.font = '48px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('GAME OVER', this.width / 2, this.height / 2 - 50);
+        
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText(`Final Score: ${this.score}`, this.width / 2, this.height / 2);
+        this.ctx.fillText(`Waves Completed: ${this.currentWave - 1}`, this.width / 2, this.height / 2 + 30);
+        this.ctx.fillText('Press R to Restart', this.width / 2, this.height / 2 + 80);
+        
+        this.ctx.textAlign = 'left';
+    }
+    
+    /**
+     * Render start screen
+     */
+    renderStartScreen() {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '36px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SPACE INVADERS', this.width / 2, this.height / 2 - 50);
+        
+        this.ctx.font = '18px Arial';
+        this.ctx.fillText('Press SPACE to Start', this.width / 2, this.height / 2 + 20);
+        this.ctx.fillText('Arrow Keys or WASD to Move', this.width / 2, this.height / 2 + 50);
+        
+        this.ctx.textAlign = 'left';
+    }
+    
+    /**
+     * Start the game
+     */
+    start() {
+        this.gameRunning = true;
+        this.gameOver = false;
+        this.score = 0;
+        this.currentWave = 1;
+        this.player.health = 3;
+        this.bullets = [];
+        this.particles = [];
+        this.initializeWave();
+    }
+    
+    /**
+     * Restart the game
+     */
+    restart() {
+        this.start();
+    }
+    
+    /**
+     * Main game loop with performance monitoring
+     */
+    gameLoop(currentTime) {
+        const frameStart = performance.now();
+        
+        // Calculate delta time and FPS
+        const deltaTime = currentTime - this.lastTime;
+        this.lastTime = currentTime;
+        this.frameCount++;
+        
+        if (this.frameCount % 60 === 0) {
+            this.fps = Math.round(1000 / deltaTime);
+        }
+        
+        // Handle restart input
+        if (this.gameOver && this.keys['KeyR']) {
+            this.restart();
+        }
+        
+        // Handle start input
+        if (!this.gameRunning && !this.gameOver && this.keys['Space']) {
+            this.start();
+        }
+        
+        // Update and render
+        this.update(deltaTime);
+        this.render();
+        
+        this.performanceMetrics.frameTime = performance.now() - frameStart;
+        
+        // Continue game loop
+        requestAnimationFrame((time) => this.gameLoop(time));
     }
 }
 
-// Export for module systems or make globally available
+/**
+ * Simple QuadTree implementation for spatial partitioning
+ * Optimizes collision detection performance with many entities
+ */
+class QuadTree {
+    constructor(x, y, width, height, maxObjects = 10, maxLevels = 5, level = 0) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.maxObjects = maxObjects;
+        this.maxLevels = maxLevels;
+        this.level = level;
+        this.objects = [];
+        this.nodes = [];
+    }
+    
+    clear() {
+        this.objects = [];
+        for (const node of this.nodes) {
+            node.clear();
+        }
+        this.nodes = [];
+    }
+    
+    split() {
+        const subWidth = this.width / 2;
+        const subHeight = this.height / 2;
+        const x = this.x;
+        const y = this.y;
+        
+        this.nodes[0] = new QuadTree(x + subWidth, y, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[1] = new QuadTree(x, y, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[2] = new QuadTree(x, y + subHeight, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[3] = new QuadTree(x + subWidth, y + subHeight, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+    }
+    
+    getIndex(rect) {
+        let index = -1;
+        const verticalMidpoint = this.x + this.width / 2;
+        const horizontalMidpoint = this.y + this.height / 2;
+        
+        const topQuadrant = rect.y < horizontalMidpoint && rect.y + rect.height < horizontalMidpoint;
+        const bottomQuadrant = rect.y > horizontalMidpoint;
+        
+        if (rect.x < verticalMidpoint && rect.x + rect.width < verticalMidpoint) {
+            if (topQuadrant) {
+                index = 1;
+            } else if (bottomQuadrant) {
+                index = 2;
+            }
+        } else if (rect.x > verticalMidpoint) {
+            if (topQuadrant) {
+                index = 0;
+            } else if (bottomQuadrant) {
+                index = 3;
+            }
+        }
+        
+        return index;
+    }
+    
+    insert(rect) {
+        if (this.nodes.length > 0) {
+            const index = this.getIndex(rect);
+            if (index !== -1) {
+                this.nodes[index].insert(rect);
+                return;
+            }
+        }
+        
+        this.objects.push(rect);
+        
+        if (this.objects.length > this.maxObjects && this.level < this.maxLevels) {
+            if (this.nodes.length === 0) {
+                this.split();
+            }
+            
+            let i = 0;
+            while (i < this.objects.length) {
+                const index = this.getIndex(this.objects[i]);
+                if (index !== -1) {
+                    this.nodes[index].insert(this.objects.splice(i, 1)[0]);
+                } else {
+                    i++;
+                }
+            }
+        }
+    }
+    
+    retrieve(rect) {
+        const returnObjects = [...this.objects];
+        
+        if (this.nodes.length > 0) {
+            const index = this.getIndex(rect);
+            if (index !== -1) {
+                returnObjects.push(...this.nodes[index].retrieve(rect));
+            } else {
+                for (const node of this.nodes) {
+                    returnObjects.push(...node.retrieve(rect));
+                }
+            }
+        }
+        
+        return returnObjects;
+    }
+}
+
+// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { Game, Player, Projectile, InputManager, TouchControls };
-} else {
-    window.Game = Game;
-    window.Player = Player;
-    window.Projectile = Projectile;
-    window.InputManager = InputManager;
-    window.TouchControls = TouchControls;
+    module.exports = { Game, QuadTree };
 }
