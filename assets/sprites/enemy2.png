@@ -1,0 +1,45 @@
+/**
+ * Enemy2 Sprite Generator
+ * Generates a 32x32 pixel stronger enemy sprite
+ * Optimized for web performance
+ */
+
+function generateEnemy2Sprite() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 32;
+    canvas.height = 32;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, 32, 32);
+    
+    // Main body (darker, more armored look)
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(4, 8, 24, 16);
+    
+    // Armor plating
+    ctx.fillStyle = '#404040';
+    ctx.fillRect(6, 10, 20, 4);
+    ctx.fillRect(6, 18, 20, 4);
+    
+    // Weapon systems
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(2, 12, 4, 8);
+    ctx.fillRect(26, 12, 4, 8);
+    
+    // Core/engine
+    ctx.fillStyle = '#ff6666';
+    ctx.fillRect(14, 14, 4, 4);
+    
+    // Exhaust ports
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(8, 26, 2, 4);
+    ctx.fillRect(22, 26, 2, 4);
+    
+    // Convert to PNG data URL
+    return canvas.toDataURL('image/png');
+}
+
+// Usage example:
+// const enemy2SpriteDataUrl = generateEnemy2Sprite();
+// You can then save this data URL as a PNG file
