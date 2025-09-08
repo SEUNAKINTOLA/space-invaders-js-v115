@@ -1,830 +1,761 @@
 /**
- * Space Invaders Game - Core Game Engine
- * 
- * Main game class managing the core game loop, canvas rendering, and system coordination.
- * Implements a clean architecture with separation of concerns between rendering,
- * game logic, and input handling.
- * 
- * Key Features:
- * - 60 FPS game loop with requestAnimationFrame
- * - Canvas context management with automatic scaling
- * - FPS counter and performance monitoring
- * - Modular system architecture for extensibility
- * - Error handling and graceful degradation
- * - Mobile-responsive canvas sizing
- * 
- * Dependencies:
- * - gameConfig: Game configuration and constants
- * - Player: Player entity management
- * - InputManager: Input handling and processing
- * - CollisionSystem: Collision detection and response
- * - EnemySystem: Enemy spawning and management
- * - ProjectileSystem: Projectile lifecycle management
- * - WaveManager: Wave progression and difficulty scaling
- * 
- * @author Space Invaders Development Team
- * @version 1.0.0
- * @since 2025-01-27
+ * Space Invaders Game - Main Game Class
+ * Implements enemy wave system with movement patterns, collision detection,
+ * and progressive difficulty scaling
  */
 
-import { gameConfig } from './config/gameConfig.js';
-import { Player } from './entities/player.js';
-import { InputManager } from './input/inputManager.js';
-import { CollisionSystem } from './systems/collisionSystem.js';
-import { EnemySystem } from './systems/enemySystem.js';
-import { ProjectileSystem } from './systems/projectileSystem.js';
-import { WaveManager } from './systems/waveManager.js';
-
-/**
- * Game States Enumeration
- * Defines all possible game states for proper state management
- */
-const GameState = {
-    LOADING: 'loading',
-    MENU: 'menu',
-    PLAYING: 'playing',
-    PAUSED: 'paused',
-    GAME_OVER: 'game_over',
-    VICTORY: 'victory'
-};
-
-/**
- * Main Game Class
- * 
- * Orchestrates the entire game experience including initialization,
- * game loop management, rendering, and system coordination.
- * 
- * Architecture:
- * - Entity-Component-System (ECS) inspired design
- * - Clear separation between update and render phases
- * - Modular system integration for maintainability
- * - Performance monitoring and optimization
- */
 class Game {
-    /**
-     * Initialize the Game instance
-     * 
-     * Sets up the core game infrastructure including canvas management,
-     * system initialization, and performance monitoring.
-     * 
-     * @param {HTMLCanvasElement} canvas - The HTML5 canvas element for rendering
-     * @throws {Error} If canvas is not provided or invalid
-     */
     constructor(canvas) {
-        // Input validation
-        if (!canvas || !(canvas instanceof HTMLCanvasElement)) {
-            throw new Error('Game constructor requires a valid HTMLCanvasElement');
-        }
-
-        // Core rendering infrastructure
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
+        this.width = canvas.width;
+        this.height = canvas.height;
         
-        if (!this.ctx) {
-            throw new Error('Failed to get 2D rendering context from canvas');
-        }
-
-        // Game state management
-        this.state = GameState.LOADING;
-        this.isRunning = false;
-        this.isPaused = false;
-
-        // Performance monitoring
-        this.lastFrameTime = 0;
-        this.deltaTime = 0;
-        this.fps = 0;
-        this.frameCount = 0;
-        this.fpsUpdateTime = 0;
-        this.showFPS = gameConfig.debug.showFPS || false;
-
-        // Game loop management
-        this.animationFrameId = null;
-        this.gameLoopBound = this.gameLoop.bind(this);
-
-        // Game systems - initialized in init()
-        this.player = null;
-        this.inputManager = null;
-        this.collisionSystem = null;
-        this.enemySystem = null;
-        this.projectileSystem = null;
-        this.waveManager = null;
-
-        // Game data
+        // Game state
+        this.gameRunning = false;
+        this.gameOver = false;
         this.score = 0;
-        this.lives = gameConfig.player.initialLives;
-        this.level = 1;
-
-        // Error handling
-        this.errorCount = 0;
-        this.maxErrors = 10;
-
-        // Initialize canvas properties
-        this.setupCanvas();
+        this.currentWave = 1;
+        this.lastTime = 0;
+        this.frameCount = 0;
+        this.fps = 0;
         
-        // Bind event handlers
-        this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
-        this.handleResize = this.handleResize.bind(this);
+        // Player
+        this.player = {
+            x: this.width / 2 - 25,
+            y: this.height - 60,
+            width: 50,
+            height: 30,
+            speed: 5,
+            health: 3
+        };
         
-        // Setup event listeners
-        this.setupEventListeners();
-
-        console.log('Game instance created successfully');
+        // Input handling
+        this.keys = {};
+        this.setupInput();
+        
+        // Game systems
+        this.bullets = [];
+        this.enemies = [];
+        this.explosions = [];
+        this.particles = [];
+        
+        // Enemy wave configuration
+        this.waveConfig = {
+            baseEnemyCount: 20,
+            enemySpeedBase: 1,
+            enemySpeedIncrement: 0.2,
+            waveDelay: 2000,
+            formationSpacing: 60
+        };
+        
+        // Enemy movement
+        this.enemyDirection = 1;
+        this.enemyDropDistance = 40;
+        this.enemyMoveTimer = 0;
+        this.enemyMoveInterval = 800;
+        
+        // Collision system
+        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
+        
+        // Performance monitoring
+        this.performanceMetrics = {
+            frameTime: 0,
+            updateTime: 0,
+            renderTime: 0
+        };
+        
+        this.initializeWave();
     }
-
+    
     /**
-     * Setup canvas properties and responsive behavior
-     * 
-     * Configures canvas dimensions, scaling, and rendering properties
-     * for optimal display across different screen sizes.
+     * Initialize input event listeners
      */
-    setupCanvas() {
-        try {
-            // Set canvas dimensions from config
-            this.canvas.width = gameConfig.canvas.width;
-            this.canvas.height = gameConfig.canvas.height;
-
-            // Configure rendering context
-            this.ctx.imageSmoothingEnabled = gameConfig.canvas.imageSmoothingEnabled;
-            this.ctx.textAlign = 'left';
-            this.ctx.textBaseline = 'top';
-
-            // Apply CSS styling for responsive behavior
-            this.canvas.style.display = 'block';
-            this.canvas.style.margin = '0 auto';
-            this.canvas.style.border = '1px solid #333';
-            this.canvas.style.backgroundColor = '#000';
-
-            // Calculate and apply responsive scaling
-            this.updateCanvasScale();
-
-            console.log(`Canvas initialized: ${this.canvas.width}x${this.canvas.height}`);
-        } catch (error) {
-            console.error('Failed to setup canvas:', error);
-            throw new Error(`Canvas setup failed: ${error.message}`);
+    setupInput() {
+        document.addEventListener('keydown', (e) => {
+            this.keys[e.code] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                this.shoot();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            this.keys[e.code] = false;
+        });
+    }
+    
+    /**
+     * Initialize a new enemy wave with formation patterns
+     */
+    initializeWave() {
+        this.enemies = [];
+        const enemyCount = this.waveConfig.baseEnemyCount + (this.currentWave - 1) * 5;
+        const enemySpeed = this.waveConfig.enemySpeedBase + (this.currentWave - 1) * this.waveConfig.enemySpeedIncrement;
+        
+        // Create formation pattern
+        const rows = Math.ceil(enemyCount / 10);
+        const cols = Math.min(10, enemyCount);
+        const startX = (this.width - (cols * this.waveConfig.formationSpacing)) / 2;
+        const startY = 50;
+        
+        let enemyIndex = 0;
+        for (let row = 0; row < rows && enemyIndex < enemyCount; row++) {
+            for (let col = 0; col < cols && enemyIndex < enemyCount; col++) {
+                const enemyType = this.getEnemyType(row);
+                this.enemies.push({
+                    id: `enemy_${enemyIndex}`,
+                    x: startX + col * this.waveConfig.formationSpacing,
+                    y: startY + row * 50,
+                    width: 40,
+                    height: 30,
+                    speed: enemySpeed,
+                    type: enemyType,
+                    health: enemyType.health,
+                    maxHealth: enemyType.health,
+                    points: enemyType.points,
+                    color: enemyType.color,
+                    lastShot: 0,
+                    shootInterval: enemyType.shootInterval,
+                    destroyed: false
+                });
+                enemyIndex++;
+            }
         }
+        
+        // Reset enemy movement
+        this.enemyDirection = 1;
+        this.enemyMoveTimer = 0;
     }
-
+    
     /**
-     * Update canvas scaling for responsive design
-     * 
-     * Calculates optimal scaling factor based on viewport size
-     * while maintaining aspect ratio.
+     * Get enemy type configuration based on row position
      */
-    updateCanvasScale() {
-        try {
-            const containerWidth = window.innerWidth * 0.9; // 90% of viewport
-            const containerHeight = window.innerHeight * 0.8; // 80% of viewport
-
-            const scaleX = containerWidth / this.canvas.width;
-            const scaleY = containerHeight / this.canvas.height;
-            const scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 1:1
-
-            this.canvas.style.width = `${this.canvas.width * scale}px`;
-            this.canvas.style.height = `${this.canvas.height * scale}px`;
-
-            console.log(`Canvas scaled to: ${scale.toFixed(2)}x`);
-        } catch (error) {
-            console.error('Failed to update canvas scale:', error);
-        }
+    getEnemyType(row) {
+        const types = [
+            { health: 1, points: 30, color: '#ff4444', shootInterval: 3000 }, // Fast scouts
+            { health: 2, points: 20, color: '#44ff44', shootInterval: 2500 }, // Medium fighters
+            { health: 3, points: 10, color: '#4444ff', shootInterval: 2000 }  // Heavy tanks
+        ];
+        return types[Math.min(row, types.length - 1)];
     }
-
+    
     /**
-     * Setup global event listeners
-     * 
-     * Registers event handlers for page visibility changes,
-     * window resizing, and other global events.
+     * Player shooting mechanism
      */
-    setupEventListeners() {
-        try {
-            // Handle page visibility changes for pause/resume
-            document.addEventListener('visibilitychange', this.handleVisibilityChange);
-            
-            // Handle window resize for responsive canvas
-            window.addEventListener('resize', this.handleResize);
-
-            // Handle page unload for cleanup
-            window.addEventListener('beforeunload', () => {
-                this.cleanup();
+    shoot() {
+        if (!this.gameRunning || this.gameOver) return;
+        
+        const now = Date.now();
+        if (now - (this.player.lastShot || 0) < 200) return; // Rate limiting
+        
+        this.bullets.push({
+            x: this.player.x + this.player.width / 2 - 2,
+            y: this.player.y,
+            width: 4,
+            height: 10,
+            speed: 8,
+            owner: 'player',
+            damage: 1
+        });
+        
+        this.player.lastShot = now;
+    }
+    
+    /**
+     * Enemy shooting mechanism
+     */
+    enemyShoot(enemy) {
+        const now = Date.now();
+        if (now - enemy.lastShot < enemy.shootInterval) return;
+        
+        // Random chance to shoot
+        if (Math.random() < 0.1) {
+            this.bullets.push({
+                x: enemy.x + enemy.width / 2 - 2,
+                y: enemy.y + enemy.height,
+                width: 4,
+                height: 8,
+                speed: 3,
+                owner: 'enemy',
+                damage: 1,
+                color: '#ff6666'
             });
-
-            console.log('Event listeners registered successfully');
-        } catch (error) {
-            console.error('Failed to setup event listeners:', error);
+            enemy.lastShot = now;
         }
     }
-
+    
     /**
-     * Handle page visibility changes
-     * 
-     * Automatically pauses the game when the page becomes hidden
-     * and resumes when it becomes visible again.
-     */
-    handleVisibilityChange() {
-        try {
-            if (document.hidden && this.state === GameState.PLAYING) {
-                this.pause();
-                console.log('Game auto-paused due to page visibility change');
-            } else if (!document.hidden && this.isPaused && this.state === GameState.PAUSED) {
-                // Only auto-resume if the game was auto-paused
-                this.resume();
-                console.log('Game auto-resumed due to page visibility change');
-            }
-        } catch (error) {
-            console.error('Error handling visibility change:', error);
-        }
-    }
-
-    /**
-     * Handle window resize events
-     * 
-     * Updates canvas scaling to maintain responsive behavior
-     * when the window size changes.
-     */
-    handleResize() {
-        try {
-            // Debounce resize events
-            clearTimeout(this.resizeTimeout);
-            this.resizeTimeout = setTimeout(() => {
-                this.updateCanvasScale();
-            }, 250);
-        } catch (error) {
-            console.error('Error handling resize:', error);
-        }
-    }
-
-    /**
-     * Initialize the game
-     * 
-     * Sets up all game systems, entities, and prepares the game
-     * for the main game loop. This method should be called once
-     * before starting the game loop.
-     * 
-     * @returns {Promise<void>} Resolves when initialization is complete
-     * @throws {Error} If initialization fails
-     */
-    async init() {
-        try {
-            console.log('Initializing game systems...');
-
-            // Initialize input management
-            this.inputManager = new InputManager();
-            await this.inputManager.init();
-
-            // Initialize player entity
-            this.player = new Player(
-                gameConfig.canvas.width / 2,
-                gameConfig.canvas.height - gameConfig.player.offsetFromBottom
-            );
-
-            // Initialize game systems
-            this.collisionSystem = new CollisionSystem();
-            this.enemySystem = new EnemySystem();
-            this.projectileSystem = new ProjectileSystem();
-            this.waveManager = new WaveManager();
-
-            // Initialize systems that require setup
-            await this.enemySystem.init();
-            await this.projectileSystem.init();
-            await this.waveManager.init();
-
-            // Set initial game state
-            this.state = GameState.MENU;
-            this.score = 0;
-            this.lives = gameConfig.player.initialLives;
-            this.level = 1;
-
-            console.log('Game initialization completed successfully');
-        } catch (error) {
-            console.error('Game initialization failed:', error);
-            this.state = GameState.LOADING;
-            throw new Error(`Game initialization failed: ${error.message}`);
-        }
-    }
-
-    /**
-     * Start the game
-     * 
-     * Begins the main game loop and transitions to the playing state.
-     * The game must be initialized before calling this method.
-     * 
-     * @throws {Error} If the game is not properly initialized
-     */
-    start() {
-        try {
-            if (this.state === GameState.LOADING) {
-                throw new Error('Cannot start game: initialization not complete');
-            }
-
-            if (this.isRunning) {
-                console.warn('Game is already running');
-                return;
-            }
-
-            // Transition to playing state
-            this.state = GameState.PLAYING;
-            this.isRunning = true;
-            this.isPaused = false;
-
-            // Reset performance counters
-            this.lastFrameTime = performance.now();
-            this.frameCount = 0;
-            this.fpsUpdateTime = this.lastFrameTime;
-
-            // Start the game loop
-            this.animationFrameId = requestAnimationFrame(this.gameLoopBound);
-
-            console.log('Game started successfully');
-        } catch (error) {
-            console.error('Failed to start game:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Pause the game
-     * 
-     * Suspends the game loop while maintaining game state.
-     * The game can be resumed from the exact same state.
-     */
-    pause() {
-        try {
-            if (!this.isRunning || this.isPaused) {
-                return;
-            }
-
-            this.isPaused = true;
-            this.state = GameState.PAUSED;
-
-            // Cancel the animation frame
-            if (this.animationFrameId) {
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
-
-            console.log('Game paused');
-        } catch (error) {
-            console.error('Failed to pause game:', error);
-        }
-    }
-
-    /**
-     * Resume the game
-     * 
-     * Resumes the game loop from a paused state.
-     * Resets timing to prevent large delta time jumps.
-     */
-    resume() {
-        try {
-            if (!this.isRunning || !this.isPaused) {
-                return;
-            }
-
-            this.isPaused = false;
-            this.state = GameState.PLAYING;
-
-            // Reset timing to prevent delta time jump
-            this.lastFrameTime = performance.now();
-
-            // Restart the game loop
-            this.animationFrameId = requestAnimationFrame(this.gameLoopBound);
-
-            console.log('Game resumed');
-        } catch (error) {
-            console.error('Failed to resume game:', error);
-        }
-    }
-
-    /**
-     * Stop the game
-     * 
-     * Completely stops the game loop and resets the game state.
-     * The game can be restarted by calling start() again.
-     */
-    stop() {
-        try {
-            this.isRunning = false;
-            this.isPaused = false;
-
-            // Cancel animation frame
-            if (this.animationFrameId) {
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
-
-            // Reset game state
-            this.state = GameState.MENU;
-
-            console.log('Game stopped');
-        } catch (error) {
-            console.error('Failed to stop game:', error);
-        }
-    }
-
-    /**
-     * Main game loop
-     * 
-     * The core game loop that handles timing, updates, and rendering.
-     * Runs at 60 FPS using requestAnimationFrame for smooth performance.
-     * 
-     * @param {number} currentTime - Current timestamp from requestAnimationFrame
-     */
-    gameLoop(currentTime) {
-        try {
-            // Calculate delta time
-            this.deltaTime = (currentTime - this.lastFrameTime) / 1000; // Convert to seconds
-            this.lastFrameTime = currentTime;
-
-            // Cap delta time to prevent large jumps
-            this.deltaTime = Math.min(this.deltaTime, gameConfig.performance.maxDeltaTime);
-
-            // Update FPS counter
-            this.updateFPS(currentTime);
-
-            // Only update and render if not paused
-            if (!this.isPaused && this.state === GameState.PLAYING) {
-                this.update(this.deltaTime);
-                this.render();
-            }
-
-            // Continue the game loop if still running
-            if (this.isRunning) {
-                this.animationFrameId = requestAnimationFrame(this.gameLoopBound);
-            }
-        } catch (error) {
-            this.handleGameLoopError(error);
-        }
-    }
-
-    /**
-     * Update FPS counter
-     * 
-     * Calculates and updates the frames per second counter
-     * for performance monitoring.
-     * 
-     * @param {number} currentTime - Current timestamp
-     */
-    updateFPS(currentTime) {
-        this.frameCount++;
-        
-        if (currentTime - this.fpsUpdateTime >= 1000) { // Update every second
-            this.fps = Math.round((this.frameCount * 1000) / (currentTime - this.fpsUpdateTime));
-            this.frameCount = 0;
-            this.fpsUpdateTime = currentTime;
-        }
-    }
-
-    /**
-     * Update game logic
-     * 
-     * Updates all game systems and entities. This is where the
-     * game logic is processed each frame.
-     * 
-     * @param {number} deltaTime - Time elapsed since last frame in seconds
+     * Update game state - main game loop logic
      */
     update(deltaTime) {
-        try {
-            // Update input state
-            this.inputManager.update(deltaTime);
-
-            // Update player
-            if (this.player) {
-                this.player.update(deltaTime, this.inputManager);
-            }
-
-            // Update game systems
-            this.enemySystem.update(deltaTime);
-            this.projectileSystem.update(deltaTime);
-            this.waveManager.update(deltaTime);
-
-            // Process collisions
-            this.collisionSystem.update(
-                deltaTime,
-                this.player,
-                this.enemySystem.getEnemies(),
-                this.projectileSystem.getProjectiles()
-            );
-
-            // Check game state conditions
-            this.checkGameStateConditions();
-
-        } catch (error) {
-            console.error('Error in game update:', error);
-            throw error;
-        }
+        if (!this.gameRunning || this.gameOver) return;
+        
+        const updateStart = performance.now();
+        
+        this.updatePlayer(deltaTime);
+        this.updateBullets(deltaTime);
+        this.updateEnemies(deltaTime);
+        this.updateCollisions();
+        this.updateParticles(deltaTime);
+        this.checkGameState();
+        
+        this.performanceMetrics.updateTime = performance.now() - updateStart;
     }
-
+    
     /**
-     * Render the game
-     * 
-     * Renders all visual elements to the canvas. This includes
-     * clearing the canvas, drawing entities, UI elements, and debug info.
+     * Update player position and state
      */
-    render() {
-        try {
-            // Clear the canvas
-            this.ctx.fillStyle = gameConfig.canvas.backgroundColor;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-            // Render game entities
-            if (this.player) {
-                this.player.render(this.ctx);
-            }
-
-            this.enemySystem.render(this.ctx);
-            this.projectileSystem.render(this.ctx);
-
-            // Render UI elements
-            this.renderUI();
-
-            // Render debug information
-            if (gameConfig.debug.enabled) {
-                this.renderDebugInfo();
-            }
-
-        } catch (error) {
-            console.error('Error in game render:', error);
-            throw error;
+    updatePlayer(deltaTime) {
+        // Player movement
+        if (this.keys['ArrowLeft'] || this.keys['KeyA']) {
+            this.player.x = Math.max(0, this.player.x - this.player.speed);
         }
+        if (this.keys['ArrowRight'] || this.keys['KeyD']) {
+            this.player.x = Math.min(this.width - this.player.width, this.player.x + this.player.speed);
+        }
+        
+        // Validate player position
+        this.player.x = Math.max(0, Math.min(this.width - this.player.width, this.player.x));
+        this.player.y = Math.max(0, Math.min(this.height - this.player.height, this.player.y));
     }
-
+    
     /**
-     * Render UI elements
-     * 
-     * Draws the user interface including score, lives, level,
-     * and other game information.
+     * Update bullet positions and lifecycle
      */
-    renderUI() {
-        try {
-            const ctx = this.ctx;
+    updateBullets(deltaTime) {
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const bullet = this.bullets[i];
             
-            // Set UI text properties
-            ctx.fillStyle = gameConfig.ui.textColor;
-            ctx.font = gameConfig.ui.font;
-
-            // Render score
-            ctx.fillText(`Score: ${this.score}`, 10, 10);
-
-            // Render lives
-            ctx.fillText(`Lives: ${this.lives}`, 10, 35);
-
-            // Render level
-            ctx.fillText(`Level: ${this.level}`, 10, 60);
-
-            // Render wave information
-            if (this.waveManager) {
-                const waveInfo = this.waveManager.getCurrentWaveInfo();
-                ctx.fillText(`Wave: ${waveInfo.number}`, 10, 85);
+            if (bullet.owner === 'player') {
+                bullet.y -= bullet.speed;
+                if (bullet.y < -bullet.height) {
+                    this.bullets.splice(i, 1);
+                }
+            } else {
+                bullet.y += bullet.speed;
+                if (bullet.y > this.height) {
+                    this.bullets.splice(i, 1);
+                }
             }
-
-        } catch (error) {
-            console.error('Error rendering UI:', error);
         }
     }
-
+    
     /**
-     * Render debug information
-     * 
-     * Displays debug information including FPS, entity counts,
-     * and performance metrics.
+     * Update enemy positions and behavior with formation movement
      */
-    renderDebugInfo() {
-        try {
-            const ctx = this.ctx;
-            const debugY = this.canvas.height - 100;
-
-            // Set debug text properties
-            ctx.fillStyle = gameConfig.debug.textColor;
-            ctx.font = gameConfig.debug.font;
-
-            // Render FPS
-            if (this.showFPS) {
-                ctx.fillText(`FPS: ${this.fps}`, 10, debugY);
+    updateEnemies(deltaTime) {
+        if (this.enemies.length === 0) return;
+        
+        this.enemyMoveTimer += deltaTime;
+        
+        // Formation movement logic
+        if (this.enemyMoveTimer >= this.enemyMoveInterval) {
+            let shouldDrop = false;
+            
+            // Check if any enemy hits screen edge
+            for (const enemy of this.enemies) {
+                if (!enemy.destroyed) {
+                    if ((this.enemyDirection > 0 && enemy.x + enemy.width >= this.width - 10) ||
+                        (this.enemyDirection < 0 && enemy.x <= 10)) {
+                        shouldDrop = true;
+                        break;
+                    }
+                }
             }
-
-            // Render entity counts
-            ctx.fillText(`Enemies: ${this.enemySystem.getEnemyCount()}`, 10, debugY + 20);
-            ctx.fillText(`Projectiles: ${this.projectileSystem.getProjectileCount()}`, 10, debugY + 40);
-
-            // Render delta time
-            ctx.fillText(`Delta: ${(this.deltaTime * 1000).toFixed(2)}ms`, 10, debugY + 60);
-
-        } catch (error) {
-            console.error('Error rendering debug info:', error);
+            
+            // Move enemies
+            for (const enemy of this.enemies) {
+                if (!enemy.destroyed) {
+                    if (shouldDrop) {
+                        enemy.y += this.enemyDropDistance;
+                    } else {
+                        enemy.x += this.enemyDirection * 20;
+                    }
+                    
+                    // Enemy shooting
+                    this.enemyShoot(enemy);
+                }
+            }
+            
+            if (shouldDrop) {
+                this.enemyDirection *= -1;
+                // Increase speed slightly after each drop
+                this.enemyMoveInterval = Math.max(200, this.enemyMoveInterval - 50);
+            }
+            
+            this.enemyMoveTimer = 0;
+        }
+        
+        // Remove destroyed enemies
+        this.enemies = this.enemies.filter(enemy => !enemy.destroyed);
+    }
+    
+    /**
+     * Comprehensive collision detection system
+     */
+    updateCollisions() {
+        // Clear and rebuild quad tree for spatial partitioning
+        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
+        
+        // Add entities to quad tree
+        this.enemies.forEach(enemy => {
+            if (!enemy.destroyed) {
+                this.collisionQuadTree.insert(enemy);
+            }
+        });
+        
+        // Player bullet vs enemy collisions
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const bullet = this.bullets[i];
+            
+            if (bullet.owner === 'player') {
+                const nearbyEnemies = this.collisionQuadTree.retrieve(bullet);
+                
+                for (const enemy of nearbyEnemies) {
+                    if (this.checkCollision(bullet, enemy)) {
+                        // Damage enemy
+                        enemy.health -= bullet.damage;
+                        
+                        // Create hit effect
+                        this.createHitEffect(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        
+                        if (enemy.health <= 0) {
+                            // Enemy destroyed
+                            enemy.destroyed = true;
+                            this.score += enemy.points;
+                            this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        }
+                        
+                        // Remove bullet
+                        this.bullets.splice(i, 1);
+                        break;
+                    }
+                }
+            } else if (bullet.owner === 'enemy') {
+                // Enemy bullet vs player collision
+                if (this.checkCollision(bullet, this.player)) {
+                    this.player.health -= bullet.damage;
+                    this.bullets.splice(i, 1);
+                    this.createHitEffect(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2);
+                    
+                    if (this.player.health <= 0) {
+                        this.triggerGameOver();
+                    }
+                }
+            }
+        }
+        
+        // Enemy vs player collision (game over)
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed && this.checkCollision(enemy, this.player)) {
+                this.triggerGameOver();
+                break;
+            }
         }
     }
-
+    
+    /**
+     * AABB collision detection
+     */
+    checkCollision(rect1, rect2) {
+        return rect1.x < rect2.x + rect2.width &&
+               rect1.x + rect1.width > rect2.x &&
+               rect1.y < rect2.y + rect2.height &&
+               rect1.y + rect1.height > rect2.y;
+    }
+    
+    /**
+     * Create visual hit effect
+     */
+    createHitEffect(x, y) {
+        for (let i = 0; i < 5; i++) {
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4,
+                life: 30,
+                maxLife: 30,
+                color: '#ffff00',
+                size: 3
+            });
+        }
+    }
+    
+    /**
+     * Create explosion effect
+     */
+    createExplosion(x, y) {
+        for (let i = 0; i < 10; i++) {
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8,
+                life: 60,
+                maxLife: 60,
+                color: '#ff4400',
+                size: 5
+            });
+        }
+    }
+    
+    /**
+     * Update particle effects
+     */
+    updateParticles(deltaTime) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
+            
+            if (particle.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
+    }
+    
     /**
      * Check game state conditions
-     * 
-     * Evaluates conditions that might trigger state changes
-     * such as game over, level completion, etc.
      */
-    checkGameStateConditions() {
-        try {
-            // Check for game over conditions
-            if (this.lives <= 0) {
-                this.gameOver();
-                return;
+    checkGameState() {
+        // Check for wave completion
+        const aliveEnemies = this.enemies.filter(enemy => !enemy.destroyed);
+        if (aliveEnemies.length === 0) {
+            this.currentWave++;
+            setTimeout(() => {
+                this.initializeWave();
+            }, this.waveConfig.waveDelay);
+        }
+        
+        // Check if enemies reached player level (game over condition)
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed && enemy.y + enemy.height >= this.player.y) {
+                this.triggerGameOver();
+                break;
             }
-
-            // Check for wave completion
-            if (this.waveManager.isWaveComplete() && this.enemySystem.getEnemyCount() === 0) {
-                this.completeWave();
-            }
-
-        } catch (error) {
-            console.error('Error checking game state conditions:', error);
         }
     }
-
+    
     /**
-     * Handle wave completion
-     * 
-     * Processes the completion of a wave including score bonuses,
-     * level progression, and next wave preparation.
+     * Trigger game over state
      */
-    completeWave() {
-        try {
-            // Award completion bonus
-            const bonus = this.level * gameConfig.scoring.waveCompletionBonus;
-            this.addScore(bonus);
-
-            // Progress to next level/wave
-            this.level++;
-            this.waveManager.nextWave();
-
-            console.log(`Wave completed! Level ${this.level}, Bonus: ${bonus}`);
-        } catch (error) {
-            console.error('Error completing wave:', error);
-        }
+    triggerGameOver() {
+        this.gameOver = true;
+        this.gameRunning = false;
     }
-
+    
     /**
-     * Handle game over
-     * 
-     * Transitions the game to the game over state and
-     * performs necessary cleanup.
+     * Render all game elements
      */
-    gameOver() {
-        try {
-            this.state = GameState.GAME_OVER;
-            this.pause();
-
-            console.log(`Game Over! Final Score: ${this.score}`);
-        } catch (error) {
-            console.error('Error handling game over:', error);
-        }
-    }
-
-    /**
-     * Add score
-     * 
-     * Adds points to the player's score with validation.
-     * 
-     * @param {number} points - Points to add
-     */
-    addScore(points) {
-        try {
-            if (typeof points !== 'number' || points < 0) {
-                console.warn('Invalid score value:', points);
-                return;
-            }
-
-            this.score += points;
-            console.log(`Score added: ${points}, Total: ${this.score}`);
-        } catch (error) {
-            console.error('Error adding score:', error);
-        }
-    }
-
-    /**
-     * Remove life
-     * 
-     * Decreases the player's life count with validation.
-     */
-    removeLife() {
-        try {
-            if (this.lives > 0) {
-                this.lives--;
-                console.log(`Life lost! Remaining lives: ${this.lives}`);
-            }
-        } catch (error) {
-            console.error('Error removing life:', error);
-        }
-    }
-
-    /**
-     * Handle game loop errors
-     * 
-     * Manages errors that occur during the game loop to prevent
-     * complete game crashes.
-     * 
-     * @param {Error} error - The error that occurred
-     */
-    handleGameLoopError(error) {
-        this.errorCount++;
-        console.error(`Game loop error #${this.errorCount}:`, error);
-
-        // If too many errors occur, stop the game
-        if (this.errorCount >= this.maxErrors) {
-            console.error('Too many game loop errors, stopping game');
-            this.stop();
-            this.state = GameState.GAME_OVER;
+    render() {
+        if (!this.ctx) return;
+        
+        const renderStart = performance.now();
+        
+        // Clear canvas
+        this.ctx.fillStyle = '#000011';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        
+        if (this.gameRunning && !this.gameOver) {
+            this.renderPlayer();
+            this.renderBullets();
+            this.renderEnemies();
+            this.renderParticles();
+            this.renderUI();
+        } else if (this.gameOver) {
+            this.renderGameOver();
         } else {
-            // Try to continue the game loop
-            if (this.isRunning) {
-                this.animationFrameId = requestAnimationFrame(this.gameLoopBound);
+            this.renderStartScreen();
+        }
+        
+        this.performanceMetrics.renderTime = performance.now() - renderStart;
+    }
+    
+    /**
+     * Render player sprite
+     */
+    renderPlayer() {
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
+        
+        // Player health indicator
+        for (let i = 0; i < this.player.health; i++) {
+            this.ctx.fillStyle = '#ff0000';
+            this.ctx.fillRect(10 + i * 15, this.height - 30, 10, 10);
+        }
+    }
+    
+    /**
+     * Render all bullets with smooth animation
+     */
+    renderBullets() {
+        for (const bullet of this.bullets) {
+            this.ctx.fillStyle = bullet.color || '#ffffff';
+            this.ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        }
+    }
+    
+    /**
+     * Render enemies with health indicators
+     */
+    renderEnemies() {
+        for (const enemy of this.enemies) {
+            if (!enemy.destroyed) {
+                // Enemy body
+                this.ctx.fillStyle = enemy.color;
+                this.ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                
+                // Health bar for damaged enemies
+                if (enemy.health < enemy.maxHealth) {
+                    const healthPercent = enemy.health / enemy.maxHealth;
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width, 4);
+                    this.ctx.fillStyle = '#00ff00';
+                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width * healthPercent, 4);
+                }
             }
         }
     }
-
+    
     /**
-     * Get current game state
-     * 
-     * @returns {string} Current game state
+     * Render particle effects
      */
-    getState() {
-        return this.state;
-    }
-
-    /**
-     * Get current score
-     * 
-     * @returns {number} Current score
-     */
-    getScore() {
-        return this.score;
-    }
-
-    /**
-     * Get current lives
-     * 
-     * @returns {number} Current lives
-     */
-    getLives() {
-        return this.lives;
-    }
-
-    /**
-     * Get current level
-     * 
-     * @returns {number} Current level
-     */
-    getLevel() {
-        return this.level;
-    }
-
-    /**
-     * Get current FPS
-     * 
-     * @returns {number} Current frames per second
-     */
-    getFPS() {
-        return this.fps;
-    }
-
-    /**
-     * Toggle FPS display
-     * 
-     * @param {boolean} show - Whether to show FPS
-     */
-    toggleFPS(show = !this.showFPS) {
-        this.showFPS = show;
-        console.log(`FPS display ${show ? 'enabled' : 'disabled'}`);
-    }
-
-    /**
-     * Cleanup resources
-     * 
-     * Performs cleanup of resources, event listeners, and systems
-     * when the game is being destroyed.
-     */
-    cleanup() {
-        try {
-            // Stop the game loop
-            this.stop();
-
-            // Remove event listeners
-            document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-            window.removeEventListener('resize', this.handleResize);
-
-            // Cleanup systems
-            if (this.inputManager) {
-                this.inputManager.cleanup();
-            }
-
-            // Clear timeouts
-            if (this.resizeTimeout) {
-                clearTimeout(this.resizeTimeout);
-            }
-
-            console.log('Game cleanup completed');
-        } catch (error) {
-            console.error('Error during game cleanup:', error);
+    renderParticles() {
+        for (const particle of this.particles) {
+            const alpha = particle.life / particle.maxLife;
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = particle.color;
+            this.ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, 
+                            particle.size, particle.size);
         }
+        this.ctx.globalAlpha = 1;
+    }
+    
+    /**
+     * Render game UI elements
+     */
+    renderUI() {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Score: ${this.score}`, 10, 30);
+        this.ctx.fillText(`Wave: ${this.currentWave}`, 10, 60);
+        this.ctx.fillText(`Enemies: ${this.enemies.filter(e => !e.destroyed).length}`, 10, 90);
+        
+        // FPS counter
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText(`FPS: ${this.fps}`, this.width - 80, 30);
+    }
+    
+    /**
+     * Render game over screen
+     */
+    renderGameOver() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.font = '48px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('GAME OVER', this.width / 2, this.height / 2 - 50);
+        
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText(`Final Score: ${this.score}`, this.width / 2, this.height / 2);
+        this.ctx.fillText(`Waves Completed: ${this.currentWave - 1}`, this.width / 2, this.height / 2 + 30);
+        this.ctx.fillText('Press R to Restart', this.width / 2, this.height / 2 + 80);
+        
+        this.ctx.textAlign = 'left';
+    }
+    
+    /**
+     * Render start screen
+     */
+    renderStartScreen() {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '36px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SPACE INVADERS', this.width / 2, this.height / 2 - 50);
+        
+        this.ctx.font = '18px Arial';
+        this.ctx.fillText('Press SPACE to Start', this.width / 2, this.height / 2 + 20);
+        this.ctx.fillText('Arrow Keys or WASD to Move', this.width / 2, this.height / 2 + 50);
+        
+        this.ctx.textAlign = 'left';
+    }
+    
+    /**
+     * Start the game
+     */
+    start() {
+        this.gameRunning = true;
+        this.gameOver = false;
+        this.score = 0;
+        this.currentWave = 1;
+        this.player.health = 3;
+        this.bullets = [];
+        this.particles = [];
+        this.initializeWave();
+    }
+    
+    /**
+     * Restart the game
+     */
+    restart() {
+        this.start();
+    }
+    
+    /**
+     * Main game loop with performance monitoring
+     */
+    gameLoop(currentTime) {
+        const frameStart = performance.now();
+        
+        // Calculate delta time and FPS
+        const deltaTime = currentTime - this.lastTime;
+        this.lastTime = currentTime;
+        this.frameCount++;
+        
+        if (this.frameCount % 60 === 0) {
+            this.fps = Math.round(1000 / deltaTime);
+        }
+        
+        // Handle restart input
+        if (this.gameOver && this.keys['KeyR']) {
+            this.restart();
+        }
+        
+        // Handle start input
+        if (!this.gameRunning && !this.gameOver && this.keys['Space']) {
+            this.start();
+        }
+        
+        // Update and render
+        this.update(deltaTime);
+        this.render();
+        
+        this.performanceMetrics.frameTime = performance.now() - frameStart;
+        
+        // Continue game loop
+        requestAnimationFrame((time) => this.gameLoop(time));
     }
 }
 
-// Export the Game class and GameState enum
-export { Game, GameState };
-export default Game;
+/**
+ * Simple QuadTree implementation for spatial partitioning
+ * Optimizes collision detection performance with many entities
+ */
+class QuadTree {
+    constructor(x, y, width, height, maxObjects = 10, maxLevels = 5, level = 0) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.maxObjects = maxObjects;
+        this.maxLevels = maxLevels;
+        this.level = level;
+        this.objects = [];
+        this.nodes = [];
+    }
+    
+    clear() {
+        this.objects = [];
+        for (const node of this.nodes) {
+            node.clear();
+        }
+        this.nodes = [];
+    }
+    
+    split() {
+        const subWidth = this.width / 2;
+        const subHeight = this.height / 2;
+        const x = this.x;
+        const y = this.y;
+        
+        this.nodes[0] = new QuadTree(x + subWidth, y, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[1] = new QuadTree(x, y, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[2] = new QuadTree(x, y + subHeight, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+        this.nodes[3] = new QuadTree(x + subWidth, y + subHeight, subWidth, subHeight, 
+                                   this.maxObjects, this.maxLevels, this.level + 1);
+    }
+    
+    getIndex(rect) {
+        let index = -1;
+        const verticalMidpoint = this.x + this.width / 2;
+        const horizontalMidpoint = this.y + this.height / 2;
+        
+        const topQuadrant = rect.y < horizontalMidpoint && rect.y + rect.height < horizontalMidpoint;
+        const bottomQuadrant = rect.y > horizontalMidpoint;
+        
+        if (rect.x < verticalMidpoint && rect.x + rect.width < verticalMidpoint) {
+            if (topQuadrant) {
+                index = 1;
+            } else if (bottomQuadrant) {
+                index = 2;
+            }
+        } else if (rect.x > verticalMidpoint) {
+            if (topQuadrant) {
+                index = 0;
+            } else if (bottomQuadrant) {
+                index = 3;
+            }
+        }
+        
+        return index;
+    }
+    
+    insert(rect) {
+        if (this.nodes.length > 0) {
+            const index = this.getIndex(rect);
+            if (index !== -1) {
+                this.nodes[index].insert(rect);
+                return;
+            }
+        }
+        
+        this.objects.push(rect);
+        
+        if (this.objects.length > this.maxObjects && this.level < this.maxLevels) {
+            if (this.nodes.length === 0) {
+                this.split();
+            }
+            
+            let i = 0;
+            while (i < this.objects.length) {
+                const index = this.getIndex(this.objects[i]);
+                if (index !== -1) {
+                    this.nodes[index].insert(this.objects.splice(i, 1)[0]);
+                } else {
+                    i++;
+                }
+            }
+        }
+    }
+    
+    retrieve(rect) {
+        const returnObjects = [...this.objects];
+        
+        if (this.nodes.length > 0) {
+            const index = this.getIndex(rect);
+            if (index !== -1) {
+                returnObjects.push(...this.nodes[index].retrieve(rect));
+            } else {
+                for (const node of this.nodes) {
+                    returnObjects.push(...node.retrieve(rect));
+                }
+            }
+        }
+        
+        return returnObjects;
+    }
+}
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { Game, QuadTree };
+}
