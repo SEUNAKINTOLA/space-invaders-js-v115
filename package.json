@@ -1,0 +1,184 @@
+{
+  "name": "space-invaders-js-v115",
+  "version": "1.15.0",
+  "description": "A modern HTML5 Canvas Space Invaders game with advanced features and cross-platform compatibility",
+  "main": "index.html",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "scripts": {
+    "start": "npm run serve",
+    "serve": "npx http-server . -p 8080 -c-1 --cors",
+    "serve:dev": "npx http-server . -p 3000 -c-1 --cors -o",
+    "test": "jest --coverage --verbose",
+    "test:watch": "jest --watch --coverage",
+    "test:ci": "jest --coverage --ci --watchAll=false --passWithNoTests",
+    "test:e2e": "playwright test",
+    "lint": "eslint js/**/*.js --fix",
+    "lint:check": "eslint js/**/*.js",
+    "lint:css": "stylelint css/**/*.css --fix",
+    "format": "prettier --write \"**/*.{js,json,css,html,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,css,html,md}\"",
+    "build": "npm run lint && npm run test:ci && npm run build:assets",
+    "build:assets": "npm run optimize:images && npm run optimize:audio",
+    "build:prod": "npm run build && npm run minify",
+    "minify": "npm run minify:js && npm run minify:css",
+    "minify:js": "terser js/**/*.js --compress --mangle --output dist/game.min.js",
+    "minify:css": "cleancss -o dist/styles.min.css css/styles.css",
+    "optimize:images": "imagemin assets/sprites/*.png --out-dir=dist/sprites --plugin=imagemin-pngquant",
+    "optimize:audio": "node scripts/optimize-audio.js",
+    "validate": "npm run lint:check && npm run format:check && npm run test:ci",
+    "precommit": "npm run validate",
+    "prepare": "husky install",
+    "health-check": "node scripts/health-check.js",
+    "benchmark": "node scripts/performance-benchmark.js",
+    "analyze": "npm run analyze:bundle && npm run analyze:performance",
+    "analyze:bundle": "webpack-bundle-analyzer dist/stats.json",
+    "analyze:performance": "lighthouse http://localhost:8080 --output=json --output-path=reports/lighthouse.json",
+    "security:audit": "npm audit --audit-level=moderate",
+    "security:check": "npm run security:audit && snyk test",
+    "deploy:staging": "npm run build:prod && node scripts/deploy.js staging",
+    "deploy:production": "npm run build:prod && node scripts/deploy.js production",
+    "rollback": "node scripts/rollback.js",
+    "docs:generate": "jsdoc js/**/*.js -d docs/api",
+    "docs:serve": "npx http-server docs -p 8081",
+    "clean": "rimraf dist coverage reports .nyc_output",
+    "reset": "npm run clean && npm ci"
+  },
+  "keywords": [
+    "game",
+    "space-invaders",
+    "html5",
+    "canvas",
+    "javascript",
+    "arcade",
+    "retro",
+    "browser-game",
+    "mobile-friendly",
+    "progressive-web-app"
+  ],
+  "author": {
+    "name": "Space Invaders Development Team",
+    "email": "dev@spaceinvaders.game",
+    "url": "https://github.com/spaceinvaders/js-v115"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spaceinvaders/js-v115.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spaceinvaders/js-v115/issues"
+  },
+  "homepage": "https://spaceinvaders.game",
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.40.0",
+    "@types/jest": "^29.5.0",
+    "babel-jest": "^29.7.0",
+    "clean-css-cli": "^5.6.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-jest": "^27.6.0",
+    "eslint-plugin-security": "^1.7.0",
+    "husky": "^8.0.0",
+    "http-server": "^14.1.0",
+    "imagemin": "^8.0.0",
+    "imagemin-cli": "^7.0.0",
+    "imagemin-pngquant": "^9.0.0",
+    "jest": "^29.7.0",
+    "jest-canvas-mock": "^2.5.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jsdoc": "^4.0.0",
+    "lighthouse": "^11.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^5.0.0",
+    "snyk": "^1.1200.0",
+    "stylelint": "^15.11.0",
+    "stylelint-config-standard": "^34.0.0",
+    "terser": "^5.24.0",
+    "webpack-bundle-analyzer": "^4.9.0"
+  },
+  "dependencies": {},
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead",
+    "not ie <= 11"
+  ],
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": [
+      "jest-canvas-mock"
+    ],
+    "collectCoverageFrom": [
+      "js/**/*.js",
+      "!js/**/*.test.js",
+      "!js/**/*.spec.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    },
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html",
+      "json-summary"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js",
+      "**/tests/**/*.spec.js"
+    ],
+    "moduleFileExtensions": [
+      "js",
+      "json"
+    ],
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "testTimeout": 10000,
+    "verbose": true
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.css": [
+      "stylelint --fix",
+      "prettier --write"
+    ],
+    "*.{json,html,md}": [
+      "prettier --write"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged",
+      "pre-push": "npm run test:ci"
+    }
+  },
+  "config": {
+    "port": 8080,
+    "host": "localhost",
+    "ssl": false
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/spaceinvaders"
+  },
+  "private": false,
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}
