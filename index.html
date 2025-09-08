@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <meta name="description" content="Space Invaders - Classic arcade game reimagined for modern browsers">
+    <meta name="keywords" content="space invaders, arcade game, html5 game, canvas game">
+    <meta name="author" content="Space Invaders JS V115">
+    <meta name="theme-color" content="#000000">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preload" href="css/styles.css" as="style">
+    <link rel="preload" href="js/game.js" as="script">
+    
+    <title>Space Invaders - HTML5 Canvas Game</title>
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Favicon and App Icons -->
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23000'/><rect x='8' y='8' width='16' height='16' fill='%2300ff00'/></svg>">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Space Invaders&quot;,&quot;short_name&quot;:&quot;SpaceInvaders&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#000000&quot;,&quot;theme_color&quot;:&quot;#000000&quot;}">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen" role="status" aria-label="Game loading">
+        <div class="loading-container">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div class="loading-text">
+                <h1>Space Invaders</h1>
+                <p id="loading-status">Initializing game systems...</p>
+                <div class="loading-progress">
+                    <div id="loading-bar" class="loading-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container" class="game-container" style="display: none;">
+        <!-- Game Canvas -->
+        <canvas 
+            id="game-canvas" 
+            class="game-canvas"
+            width="800" 
+            height="600"
+            role="img"
+            aria-label="Space Invaders game area"
+            tabindex="0">
+            <p>Your browser does not support the HTML5 Canvas element. Please upgrade to a modern browser to play Space Invaders.</p>
+        </canvas>
+
+        <!-- Game UI Overlay -->
+        <div id="game-ui" class="game-ui" aria-live="polite">
+            <!-- Score Display -->
+            <div id="score-display" class="score-display">
+                <span class="score-label">Score:</span>
+                <span id="score-value" class="score-value">0</span>
+            </div>
+
+            <!-- Lives Display -->
+            <div id="lives-display" class="lives-display">
+                <span class="lives-label">Lives:</span>
+                <span id="lives-value" class="lives-value">3</span>
+            </div>
+
+            <!-- Wave Display -->
+            <div id="wave-display" class="wave-display">
+                <span class="wave-label">Wave:</span>
+                <span id="wave-value" class="wave-value">1</span>
+            </div>
+        </div>
+
+        <!-- Touch Controls for Mobile -->
+        <div id="touch-controls" class="touch-controls" style="display: none;">
+            <div class="touch-control-row">
+                <button id="touch-left" class="touch-button touch-move" aria-label="Move left" type="button">
+                    <span class="touch-icon">←</span>
+                </button>
+                <button id="touch-right" class="touch-button touch-move" aria-label="Move right" type="button">
+                    <span class="touch-icon">→</span>
+                </button>
+                <button id="touch-fire" class="touch-button touch-fire" aria-label="Fire weapon" type="button">
+                    <span class="touch-icon">🚀</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Messages -->
+        <div id="game-messages" class="game-messages" aria-live="assertive">
+            <div id="game-over-message" class="game-message game-over" style="display: none;">
+                <h2>Game Over</h2>
+                <p>Final Score: <span id="final-score">0</span></p>
+                <button id="restart-button" class="game-button" type="button">Play Again</button>
+            </div>
+
+            <div id="pause-message" class="game-message pause" style="display: none;">
+                <h2>Game Paused</h2>
+                <p>Press SPACE or tap to continue</p>
+            </div>
+
+            <div id="wave-complete-message" class="game-message wave-complete" style="display: none;">
+                <h2>Wave Complete!</h2>
+                <p>Preparing next wave...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Boundary -->
+    <div id="error-boundary" class="error-boundary" style="display: none;" role="alert">
+        <div class="error-container">
+            <h2>Oops! Something went wrong</h2>
+            <p id="error-message">An unexpected error occurred while loading the game.</p>
+            <button id="error-retry" class="game-button" type="button">Try Again</button>
+        </div>
+    </div>
+
+    <!-- Performance Monitor (Development) -->
+    <div id="performance-monitor" class="performance-monitor" style="display: none;">
+        <div class="perf-metric">
+            <span class="perf-label">FPS:</span>
+            <span id="fps-counter" class="perf-value">60</span>
+        </div>
+        <div class="perf-metric">
+            <span class="perf-label">Memory:</span>
+            <span id="memory-usage" class="perf-value">0MB</span>
+        </div>
+    </div>
+
+    <!-- Game Scripts -->
+    <script type="module">
+        /**
+         * Main application bootstrap and initialization
+         * Handles loading sequence, error boundaries, and game lifecycle
+         */
+        
+        // Global error handling
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+            showErrorBoundary(event.error?.message || 'Unknown error occurred');
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
+            showErrorBoundary('Failed to load game resources');
+        });
+
+        // Loading state management
+        const loadingStates = [
+            'Initializing game systems...',
+            'Loading game configuration...',
+            'Setting up input handlers...',
+            'Initializing game entities...',
+            'Loading collision systems...',
+            'Preparing game world...',
+            'Ready to play!'
+        ];
+
+        let currentLoadingState = 0;
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingBar = document.getElementById('loading-bar');
+
+        function updateLoadingProgress(progress) {
+            const percentage = Math.min(100, Math.max(0, progress));
+            loadingBar.style.width = `${percentage}%`;
+            loadingBar.setAttribute('aria-valuenow', percentage);
+            
+            if (currentLoadingState < loadingStates.length - 1) {
+                loadingStatus.textContent = loadingStates[currentLoadingState];
+                currentLoadingState++;
+            }
+        }
+
+        function showErrorBoundary(message) {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-boundary').style.display = 'flex';
+        }
+
+        function hideLoadingScreen() {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+        }
+
+        // Touch device detection and setup
+        function setupTouchControls() {
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            const touchControls = document.getElementById('touch-controls');
+            
+            if (isTouchDevice) {
+                touchControls.style.display = 'block';
+                document.body.classList.add('touch-device');
+                
+                // Prevent default touch behaviors
+                document.addEventListener('touchstart', (e) => {
+                    if (e.target.closest('.touch-button')) {
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+                
+                document.addEventListener('touchmove', (e) => {
+                    if (e.target.closest('#game-container')) {
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+            }
+        }
+
+        // Canvas setup and validation
+        function setupCanvas() {
+            const canvas = document.getElementById('game-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (!ctx) {
+                throw new Error('Canvas 2D context not supported');
+            }
+
+            // Set up high DPI support
+            const devicePixelRatio = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            
+            canvas.width = rect.width * devicePixelRatio;
+            canvas.height = rect.height * devicePixelRatio;
+            
+            ctx.scale(devicePixelRatio, devicePixelRatio);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            // Canvas focus management
+            canvas.addEventListener('click', () => {
+                canvas.focus();
+            });
+
+            return { canvas, ctx };
+        }
+
+        // Performance monitoring setup
+        function setupPerformanceMonitoring() {
+            if (window.location.search.includes('debug=true')) {
+                document.getElementById('performance-monitor').style.display = 'block';
+                
+                let lastTime = performance.now();
+                let frameCount = 0;
+                
+                function updatePerformanceMetrics() {
+                    frameCount++;
+                    const currentTime = performance.now();
+                    
+                    if (currentTime - lastTime >= 1000) {
+                        const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                        document.getElementById('fps-counter').textContent = fps;
+                        
+                        if (performance.memory) {
+                            const memoryMB = Math.round(performance.memory.usedJSHeapSize / 1048576);
+                            document.getElementById('memory-usage').textContent = `${memoryMB}MB`;
+                        }
+                        
+                        frameCount = 0;
+                        lastTime = currentTime;
+                    }
+                    
+                    requestAnimationFrame(updatePerformanceMetrics);
+                }
+                
+                requestAnimationFrame(updatePerformanceMetrics);
+            }
+        }
+
+        // Game initialization sequence
+        async function initializeGame() {
+            try {
+                updateLoadingProgress(10);
+                
+                // Setup canvas
+                const { canvas, ctx } = setupCanvas();
+                updateLoadingProgress(25);
+                
+                // Setup touch controls
+                setupTouchControls();
+                updateLoadingProgress(40);
+                
+                // Setup performance monitoring
+                setupPerformanceMonitoring();
+                updateLoadingProgress(55);
+                
+                // Load game modules
+                const gameModule = await import('./js/game.js');
+                updateLoadingProgress(70);
+                
+                const configModule = await import('./js/config/gameConfig.js');
+                updateLoadingProgress(85);
+                
+                // Initialize game instance
+                const game = new gameModule.default(canvas, ctx, configModule.gameConfig);
+                updateLoadingProgress(95);
+                
+                // Start game
+                await game.initialize();
+                updateLoadingProgress(100);
+                
+                // Hide loading screen and show game
+                setTimeout(() => {
+                    hideLoadingScreen();
+                    game.start();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Failed to initialize game:', error);
+                showErrorBoundary(error.message || 'Failed to initialize game');
+            }
+        }
+
+        // Retry mechanism
+        document.getElementById('error-retry').addEventListener('click', () => {
+            location.reload();
+        });
+
+        // Restart game functionality
+        document.getElementById('restart-button').addEventListener('click', () => {
+            location.reload();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'F5' || (event.ctrlKey && event.code === 'KeyR')) {
+                return; // Allow normal refresh
+            }
+            
+            if (event.code === 'F11') {
+                return; // Allow fullscreen toggle
+            }
+            
+            // Game-specific shortcuts will be handled by the game module
+        });
+
+        // Visibility change handling (pause on tab switch)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Game will handle pause logic
+                window.dispatchEvent(new CustomEvent('game:pause'));
+            } else {
+                window.dispatchEvent(new CustomEvent('game:resume'));
+            }
+        });
+
+        // Responsive canvas resizing
+        window.addEventListener('resize', () => {
+            const canvas = document.getElementById('game-canvas');
+            if (canvas) {
+                // Debounce resize events
+                clearTimeout(window.resizeTimeout);
+                window.resizeTimeout = setTimeout(() => {
+                    setupCanvas();
+                    window.dispatchEvent(new CustomEvent('game:resize'));
+                }, 250);
+            }
+        });
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeGame);
+        } else {
+            initializeGame();
+        }
+
+        // Service Worker registration for PWA capabilities
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
