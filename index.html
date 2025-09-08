@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <meta name="description" content="Space Invaders - Classic arcade game reimagined for modern browsers with touch controls">
+    <meta name="keywords" content="space invaders, arcade game, html5 game, canvas game, mobile game">
+    <meta name="author" content="Space Invaders JS V115">
+    <meta name="theme-color" content="#000000">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    
+    <!-- Performance Optimization -->
+    <meta http-equiv="Cache-Control" content="public, max-age=31536000">
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Space Invaders">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    
+    <title>Space Invaders - HTML5 Canvas Game</title>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preload" href="js/game.js" as="script">
+    <link rel="preload" href="js/renderer.js" as="script">
+    <link rel="preload" href="js/config/gameConfig.js" as="script">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen" role="status" aria-label="Game loading">
+        <div class="loading-container">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h1 class="loading-title">Space Invaders</h1>
+            <div class="loading-progress">
+                <div class="loading-bar">
+                    <div id="loading-progress-fill" class="loading-progress-fill" style="width: 0%"></div>
+                </div>
+                <span id="loading-text" class="loading-text">Initializing game systems...</span>
+                <span id="loading-percentage" class="loading-percentage">0%</span>
+            </div>
+            <div class="loading-tips">
+                <p id="loading-tip" class="loading-tip">Tip: Use arrow keys or touch controls to move your ship</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container" class="game-container" style="display: none;">
+        <!-- Game Header -->
+        <header class="game-header">
+            <div class="game-info">
+                <div class="score-display">
+                    <span class="label">Score:</span>
+                    <span id="score" class="value">0</span>
+                </div>
+                <div class="lives-display">
+                    <span class="label">Lives:</span>
+                    <span id="lives" class="value">3</span>
+                </div>
+                <div class="wave-display">
+                    <span class="label">Wave:</span>
+                    <span id="wave" class="value">1</span>
+                </div>
+            </div>
+            <div class="game-controls">
+                <button id="pause-btn" class="control-btn" aria-label="Pause game" title="Pause (P)">
+                    <span class="btn-icon">⏸️</span>
+                </button>
+                <button id="mute-btn" class="control-btn" aria-label="Toggle sound" title="Mute (M)">
+                    <span class="btn-icon">🔊</span>
+                </button>
+                <button id="fullscreen-btn" class="control-btn" aria-label="Toggle fullscreen" title="Fullscreen (F)">
+                    <span class="btn-icon">⛶</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Game Canvas -->
+        <main class="game-main">
+            <canvas 
+                id="game-canvas" 
+                class="game-canvas"
+                width="800" 
+                height="600"
+                role="img"
+                aria-label="Space Invaders game area"
+                tabindex="0"
+            >
+                <p class="canvas-fallback">
+                    Your browser does not support HTML5 Canvas. 
+                    Please upgrade to a modern browser to play Space Invaders.
+                </p>
+            </canvas>
+            
+            <!-- Game Overlay Messages -->
+            <div id="game-overlay" class="game-overlay" style="display: none;">
+                <div class="overlay-content">
+                    <h2 id="overlay-title" class="overlay-title"></h2>
+                    <p id="overlay-message" class="overlay-message"></p>
+                    <div class="overlay-actions">
+                        <button id="overlay-primary-btn" class="overlay-btn primary"></button>
+                        <button id="overlay-secondary-btn" class="overlay-btn secondary" style="display: none;"></button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Touch Controls for Mobile -->
+        <div id="touch-controls" class="touch-controls">
+            <div class="touch-control-group left-controls">
+                <button id="touch-left" class="touch-btn directional" aria-label="Move left" data-action="left">
+                    <span class="btn-icon">←</span>
+                </button>
+                <button id="touch-right" class="touch-btn directional" aria-label="Move right" data-action="right">
+                    <span class="btn-icon">→</span>
+                </button>
+            </div>
+            <div class="touch-control-group right-controls">
+                <button id="touch-shoot" class="touch-btn action" aria-label="Shoot" data-action="shoot">
+                    <span class="btn-icon">🚀</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Footer -->
+        <footer class="game-footer">
+            <div class="game-stats">
+                <span class="stat">
+                    <span class="stat-label">FPS:</span>
+                    <span id="fps-counter" class="stat-value">60</span>
+                </span>
+                <span class="stat">
+                    <span class="stat-label">Enemies:</span>
+                    <span id="enemy-count" class="stat-value">0</span>
+                </span>
+            </div>
+            <div class="game-instructions">
+                <span class="instruction">Arrow Keys: Move | Space: Shoot | P: Pause</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Error Screen -->
+    <div id="error-screen" class="error-screen" style="display: none;" role="alert">
+        <div class="error-container">
+            <div class="error-icon" aria-hidden="true">⚠️</div>
+            <h2 class="error-title">Game Error</h2>
+            <p id="error-message" class="error-message">An unexpected error occurred.</p>
+            <div class="error-actions">
+                <button id="retry-btn" class="error-btn primary">Retry Game</button>
+                <button id="report-btn" class="error-btn secondary">Report Issue</button>
+            </div>
+            <details class="error-details">
+                <summary>Technical Details</summary>
+                <pre id="error-stack" class="error-stack"></pre>
+            </details>
+        </div>
+    </div>
+
+    <!-- Performance Monitor (Development) -->
+    <div id="performance-monitor" class="performance-monitor" style="display: none;">
+        <div class="perf-stats">
+            <div class="perf-stat">
+                <span class="perf-label">Frame Time:</span>
+                <span id="frame-time" class="perf-value">16.67ms</span>
+            </div>
+            <div class="perf-stat">
+                <span class="perf-label">Memory:</span>
+                <span id="memory-usage" class="perf-value">0MB</span>
+            </div>
+            <div class="perf-stat">
+                <span class="perf-label">Objects:</span>
+                <span id="object-count" class="perf-value">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module">
+        /**
+         * Main application bootstrap and initialization
+         * Handles loading, error management, and game lifecycle
+         */
+        
+        // Global error handler for uncaught exceptions
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+            showErrorScreen(event.error?.message || 'An unexpected error occurred', event.error?.stack);
+        });
+
+        // Global promise rejection handler
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
+            showErrorScreen('Promise rejection: ' + (event.reason?.message || event.reason), event.reason?.stack);
+        });
+
+        // Loading management
+        const loadingTips = [
+            "Tip: Use arrow keys or touch controls to move your ship",
+            "Tip: Shoot enemies to earn points and advance waves",
+            "Tip: Avoid enemy projectiles to preserve your lives",
+            "Tip: Higher waves bring faster and stronger enemies",
+            "Tip: Press P to pause the game at any time",
+            "Tip: Use fullscreen mode for the best experience"
+        ];
+
+        let currentTipIndex = 0;
+        let loadingProgress = 0;
+
+        /**
+         * Updates the loading screen with progress and rotating tips
+         * @param {number} progress - Loading progress (0-100)
+         * @param {string} message - Loading status message
+         */
+        function updateLoadingProgress(progress, message) {
+            loadingProgress = Math.min(100, Math.max(0, progress));
+            
+            const progressFill = document.getElementById('loading-progress-fill');
+            const loadingText = document.getElementById('loading-text');
+            const loadingPercentage = document.getElementById('loading-percentage');
+            
+            if (progressFill) progressFill.style.width = `${loadingProgress}%`;
+            if (loadingText) loadingText.textContent = message;
+            if (loadingPercentage) loadingPercentage.textContent = `${Math.round(loadingProgress)}%`;
+        }
+
+        /**
+         * Rotates loading tips for better user engagement
+         */
+        function rotateTips() {
+            const tipElement = document.getElementById('loading-tip');
+            if (tipElement && loadingTips.length > 0) {
+                currentTipIndex = (currentTipIndex + 1) % loadingTips.length;
+                tipElement.textContent = loadingTips[currentTipIndex];
+            }
+        }
+
+        /**
+         * Shows error screen with detailed information
+         * @param {string} message - Error message
+         * @param {string} stack - Error stack trace
+         */
+        function showErrorScreen(message, stack = '') {
+            const loadingScreen = document.getElementById('loading-screen');
+            const gameContainer = document.getElementById('game-container');
+            const errorScreen = document.getElementById('error-screen');
+            const errorMessage = document.getElementById('error-message');
+            const errorStack = document.getElementById('error-stack');
+
+            if (loadingScreen) loadingScreen.style.display = 'none';
+            if (gameContainer) gameContainer.style.display = 'none';
+            if (errorScreen) errorScreen.style.display = 'flex';
+            if (errorMessage) errorMessage.textContent = message;
+            if (errorStack) errorStack.textContent = stack;
+        }
+
+        /**
+         * Hides loading screen and shows game container
+         */
+        function showGame() {
+            const loadingScreen = document.getElementById('loading-screen');
+            const gameContainer = document.getElementById('game-container');
+            
+            if (loadingScreen) {
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }
+            
+            if (gameContainer) {
+                gameContainer.style.display = 'block';
+                // Focus canvas for keyboard input
+                const canvas = document.getElementById('game-canvas');
+                if (canvas) canvas.focus();
+            }
+        }
+
+        /**
+         * Detects device capabilities and adjusts UI accordingly
+         */
+        function detectDeviceCapabilities() {
+            const touchControls = document.getElementById('touch-controls');
+            const performanceMonitor = document.getElementById('performance-monitor');
+            
+            // Show touch controls on touch devices
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            if (touchControls) {
+                touchControls.style.display = isTouchDevice ? 'flex' : 'none';
+            }
+            
+            // Show performance monitor in development
+            const isDevelopment = window.location.hostname === 'localhost' || 
+                                window.location.hostname === '127.0.0.1' ||
+                                window.location.search.includes('debug=true');
+            if (performanceMonitor && isDevelopment) {
+                performanceMonitor.style.display = 'block';
+            }
+        }
+
+        /**
+         * Sets up event listeners for UI controls
+         */
+        function setupEventListeners() {
+            // Error screen retry button
+            const retryBtn = document.getElementById('retry-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    window.location.reload();
+                });
+            }
+
+            // Error screen report button
+            const reportBtn = document.getElementById('report-btn');
+            if (reportBtn) {
+                reportBtn.addEventListener('click', () => {
+                    const subject = encodeURIComponent('Space Invaders Game Error Report');
+                    const body = encodeURIComponent(`Error Details:\n${document.getElementById('error-message')?.textContent}\n\nStack Trace:\n${document.getElementById('error-stack')?.textContent}`);
+                    window.open(`mailto:support@example.com?subject=${subject}&body=${body}`);
+                });
+            }
+
+            // Fullscreen button
+            const fullscreenBtn = document.getElementById('fullscreen-btn');
+            if (fullscreenBtn) {
+                fullscreenBtn.addEventListener('click', () => {
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(console.error);
+                    } else {
+                        document.exitFullscreen().catch(console.error);
+                    }
+                });
+            }
+
+            // Canvas focus management
+            const canvas = document.getElementById('game-canvas');
+            if (canvas) {
+                canvas.addEventListener('click', () => canvas.focus());
+                canvas.addEventListener('touchstart', () => canvas.focus());
+            }
+        }
+
+        /**
+         * Main initialization function
+         */
+        async function initializeGame() {
+            try {
+                updateLoadingProgress(10, 'Detecting device capabilities...');
+                detectDeviceCapabilities();
+                
+                updateLoadingProgress(20, 'Setting up event listeners...');
+                setupEventListeners();
+                
+                updateLoadingProgress(30, 'Loading game configuration...');
+                const { gameConfig } = await import('./js/config/gameConfig.js');
+                
+                updateLoadingProgress(50, 'Initializing renderer...');
+                const { default: Renderer } = await import('./js/renderer.js');
+                
+                updateLoadingProgress(70, 'Loading game systems...');
+                const { default: Game } = await import('./js/game.js');
+                
+                updateLoadingProgress(90, 'Starting game...');
+                
+                // Initialize game instance
+                const canvas = document.getElementById('game-canvas');
+                if (!canvas) {
+                    throw new Error('Game canvas not found');
+                }
+                
+                const renderer = new Renderer(canvas);
+                const game = new Game(renderer, gameConfig);
+                
+                // Start the game
+                await game.initialize();
+                
+                updateLoadingProgress(100, 'Game ready!');
+                
+                // Show game after brief delay
+                setTimeout(() => {
+                    showGame();
+                    game.start();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Failed to initialize game:', error);
+                showErrorScreen(
+                    'Failed to load the game. Please check your internet connection and try again.',
+                    error.stack
+                );
+            }
+        }
+
+        // Start tip rotation
+        const tipInterval = setInterval(rotateTips, 3000);
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeGame);
+        } else {
+            initializeGame();
+        }
+
+        // Clean up tip rotation when game loads
+        window.addEventListener('load', () => {
+            clearInterval(tipInterval);
+        });
+
+        // Service Worker registration for PWA support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+
+    </script>
+
+    <!-- Analytics and Monitoring (Production) -->
+    <script>
+        // Performance monitoring
+        if (window.performance && window.performance.mark) {
+            window.performance.mark('game-start');
+        }
+
+        // Basic analytics (replace with your analytics service)
+        window.addEventListener('load', () => {
+            if (window.performance && window.performance.mark) {
+                window.performance.mark('game-loaded');
+                window.performance.measure('game-load-time', 'game-start', 'game-loaded');
+                
+                const measure = window.performance.getEntriesByName('game-load-time')[0];
+                if (measure) {
+                    console.log(`Game loaded in ${measure.duration.toFixed(2)}ms`);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
