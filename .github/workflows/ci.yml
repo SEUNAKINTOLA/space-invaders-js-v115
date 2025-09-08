@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Run ESLint
+      run: npx eslint js/ --ext .js
+      
+    - name: Run tests
+      run: npm test
+      
+    - name: Build check
+      run: |
+        echo "Checking if HTML loads without errors"
+        node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          if (!html.includes('<canvas')) {
+            throw new Error('Canvas element not found');
+          }
+          console.log('HTML structure check passed');
+        "
