@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Check if package.json exists
+        id: check-package
+        run: |
+          if [ -f "package.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        
+      - name: Check if lock file exists
+        id: check-lock
+        run: |
+          if [ -f "package-lock.json" ] || [ -f "yarn.lock" ] || [ -f "npm-shrinkwrap.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        
+      - name: Setup Node.js (with cache)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Setup Node.js (without cache)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies (with lock file)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'true'
+        run: npm ci
+        
+      - name: Install dependencies (without lock file)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'false'
+        run: npm install
+        
+      - name: Run linter
+        if: steps.check-package.outputs.exists == 'true'
+        run: npm run lint
+        
+      - name: Run tests
+        if: steps.check-package.outputs.exists == 'true'
+        run: npm test
+        
+      - name: Skip message
+        if: steps.check-package.outputs.exists == 'false'
+        run: echo "Skipping Node.js tests - package.json not found"

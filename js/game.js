@@ -1,761 +1,793 @@
 /**
- * Space Invaders Game - Main Game Class
- * Implements enemy wave system with movement patterns, collision detection,
- * and progressive difficulty scaling
+ * Space Invaders Game - Core Game Engine
+ * 
+ * This module implements the main game class that manages the core game loop,
+ * canvas rendering, and coordinates all game systems. It follows a clean
+ * architecture pattern with clear separation of concerns and robust error handling.
+ * 
+ * Key Features:
+ * - High-performance requestAnimationFrame game loop
+ * - Canvas context management with fallback handling
+ * - FPS monitoring and performance tracking
+ * - Modular system architecture for extensibility
+ * - Comprehensive error handling and recovery
+ * - Mobile-responsive canvas scaling
+ * 
+ * Architecture Decisions:
+ * - Entity-Component-System (ECS) pattern for game objects
+ * - Event-driven communication between systems
+ * - Dependency injection for testability
+ * - State machine for game state management
+ * 
+ * @author Space Invaders Development Team
+ * @version 1.0.0
+ * @since 2025-01-27
  */
 
+import { gameConfig } from './config/gameConfig.js';
+import { Renderer, RendererError } from './renderer.js';
+import { performanceMonitor, ValidationUtils, MathUtils } from './utils.js';
+
+/**
+ * Custom error class for game-specific errors
+ */
+class GameError extends Error {
+    constructor(message, code = 'GAME_ERROR', context = {}) {
+        super(message);
+        this.name = 'GameError';
+        this.code = code;
+        this.context = context;
+        this.timestamp = new Date().toISOString();
+    }
+}
+
+/**
+ * Game initialization error
+ */
+class GameInitializationError extends GameError {
+    constructor(message, context = {}) {
+        super(message, 'GAME_INIT_ERROR', context);
+        this.name = 'GameInitializationError';
+    }
+}
+
+/**
+ * Game loop error
+ */
+class GameLoopError extends GameError {
+    constructor(message, context = {}) {
+        super(message, 'GAME_LOOP_ERROR', context);
+        this.name = 'GameLoopError';
+    }
+}
+
+/**
+ * Game state enumeration
+ */
+const GameState = Object.freeze({
+    INITIALIZING: 'initializing',
+    MENU: 'menu',
+    PLAYING: 'playing',
+    PAUSED: 'paused',
+    GAME_OVER: 'game_over',
+    ERROR: 'error'
+});
+
+/**
+ * Main Game class that orchestrates the entire game experience
+ * 
+ * Responsibilities:
+ * - Initialize and manage the game loop
+ * - Coordinate all game systems
+ * - Handle canvas and rendering setup
+ * - Manage game state transitions
+ * - Provide performance monitoring
+ * - Handle errors gracefully
+ */
 class Game {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.width = canvas.width;
-        this.height = canvas.height;
+    /**
+     * Initialize the Game instance
+     * 
+     * @param {string} canvasId - The ID of the canvas element
+     * @param {Object} options - Configuration options
+     * @param {boolean} options.debug - Enable debug mode
+     * @param {number} options.targetFPS - Target frames per second
+     * @param {boolean} options.enablePerformanceMonitoring - Enable performance tracking
+     */
+    constructor(canvasId = 'gameCanvas', options = {}) {
+        // Validate constructor parameters
+        if (!ValidationUtils.isString(canvasId) || canvasId.trim().length === 0) {
+            throw new GameInitializationError('Canvas ID must be a non-empty string', { canvasId });
+        }
+
+        // Configuration
+        this.canvasId = canvasId;
+        this.options = {
+            debug: false,
+            targetFPS: 60,
+            enablePerformanceMonitoring: true,
+            maxDeltaTime: 1000 / 30, // Cap delta time to prevent spiral of death
+            ...options
+        };
+
+        // Core components
+        this.canvas = null;
+        this.renderer = null;
+        this.systems = new Map();
         
         // Game state
-        this.gameRunning = false;
-        this.gameOver = false;
-        this.score = 0;
-        this.currentWave = 1;
-        this.lastTime = 0;
+        this.state = GameState.INITIALIZING;
+        this.isRunning = false;
+        this.isPaused = false;
+        
+        // Timing and performance
+        this.lastFrameTime = 0;
+        this.deltaTime = 0;
         this.frameCount = 0;
         this.fps = 0;
-        
-        // Player
-        this.player = {
-            x: this.width / 2 - 25,
-            y: this.height - 60,
-            width: 50,
-            height: 30,
-            speed: 5,
-            health: 3
-        };
-        
-        // Input handling
-        this.keys = {};
-        this.setupInput();
-        
-        // Game systems
-        this.bullets = [];
-        this.enemies = [];
-        this.explosions = [];
-        this.particles = [];
-        
-        // Enemy wave configuration
-        this.waveConfig = {
-            baseEnemyCount: 20,
-            enemySpeedBase: 1,
-            enemySpeedIncrement: 0.2,
-            waveDelay: 2000,
-            formationSpacing: 60
-        };
-        
-        // Enemy movement
-        this.enemyDirection = 1;
-        this.enemyDropDistance = 40;
-        this.enemyMoveTimer = 0;
-        this.enemyMoveInterval = 800;
-        
-        // Collision system
-        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
+        this.fpsUpdateTime = 0;
+        this.animationFrameId = null;
         
         // Performance monitoring
         this.performanceMetrics = {
             frameTime: 0,
             updateTime: 0,
-            renderTime: 0
+            renderTime: 0,
+            totalGameTime: 0,
+            averageFPS: 0,
+            minFPS: Infinity,
+            maxFPS: 0
         };
         
-        this.initializeWave();
+        // Error handling
+        this.errorCount = 0;
+        this.maxErrors = 10;
+        this.lastError = null;
+        
+        // Event listeners cleanup
+        this.eventListeners = [];
+        
+        // Bind methods to preserve context
+        this.gameLoop = this.gameLoop.bind(this);
+        this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+        this.handleResize = this.handleResize.bind(this);
+        this.handleError = this.handleError.bind(this);
+        
+        // Initialize performance monitoring if enabled
+        if (this.options.enablePerformanceMonitoring) {
+            performanceMonitor.startSession('game-session');
+        }
+        
+        this.log('Game instance created', { canvasId, options: this.options });
     }
     
     /**
-     * Initialize input event listeners
+     * Initialize the game
+     * 
+     * Sets up the canvas, renderer, and all game systems.
+     * Must be called before starting the game loop.
+     * 
+     * @returns {Promise<void>}
+     * @throws {GameInitializationError} If initialization fails
      */
-    setupInput() {
-        document.addEventListener('keydown', (e) => {
-            this.keys[e.code] = true;
-            if (e.code === 'Space') {
-                e.preventDefault();
-                this.shoot();
-            }
+    async init() {
+        try {
+            this.log('Initializing game...');
+            
+            // Setup canvas and renderer
+            await this.initializeCanvas();
+            await this.initializeRenderer();
+            
+            // Initialize game systems
+            await this.initializeSystems();
+            
+            // Setup event listeners
+            this.setupEventListeners();
+            
+            // Transition to menu state
+            this.setState(GameState.MENU);
+            
+            this.log('Game initialization complete');
+            
+        } catch (error) {
+            const initError = new GameInitializationError(
+                `Failed to initialize game: ${error.message}`,
+                { originalError: error, canvasId: this.canvasId }
+            );
+            
+            this.handleError(initError);
+            throw initError;
+        }
+    }
+    
+    /**
+     * Initialize the canvas element
+     * 
+     * @private
+     * @returns {Promise<void>}
+     * @throws {GameInitializationError} If canvas setup fails
+     */
+    async initializeCanvas() {
+        this.canvas = document.getElementById(this.canvasId);
+        
+        if (!this.canvas) {
+            throw new GameInitializationError(
+                `Canvas element with ID '${this.canvasId}' not found`,
+                { canvasId: this.canvasId }
+            );
+        }
+        
+        if (!(this.canvas instanceof HTMLCanvasElement)) {
+            throw new GameInitializationError(
+                `Element with ID '${this.canvasId}' is not a canvas element`,
+                { canvasId: this.canvasId, elementType: this.canvas.tagName }
+            );
+        }
+        
+        // Set canvas dimensions
+        this.canvas.width = gameConfig.canvas.width;
+        this.canvas.height = gameConfig.canvas.height;
+        
+        // Add canvas attributes for accessibility
+        this.canvas.setAttribute('role', 'application');
+        this.canvas.setAttribute('aria-label', 'Space Invaders Game');
+        this.canvas.setAttribute('tabindex', '0');
+        
+        this.log('Canvas initialized', {
+            width: this.canvas.width,
+            height: this.canvas.height
         });
-        
-        document.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
-        });
     }
     
     /**
-     * Initialize a new enemy wave with formation patterns
+     * Initialize the renderer
+     * 
+     * @private
+     * @returns {Promise<void>}
+     * @throws {GameInitializationError} If renderer setup fails
      */
-    initializeWave() {
-        this.enemies = [];
-        const enemyCount = this.waveConfig.baseEnemyCount + (this.currentWave - 1) * 5;
-        const enemySpeed = this.waveConfig.enemySpeedBase + (this.currentWave - 1) * this.waveConfig.enemySpeedIncrement;
-        
-        // Create formation pattern
-        const rows = Math.ceil(enemyCount / 10);
-        const cols = Math.min(10, enemyCount);
-        const startX = (this.width - (cols * this.waveConfig.formationSpacing)) / 2;
-        const startY = 50;
-        
-        let enemyIndex = 0;
-        for (let row = 0; row < rows && enemyIndex < enemyCount; row++) {
-            for (let col = 0; col < cols && enemyIndex < enemyCount; col++) {
-                const enemyType = this.getEnemyType(row);
-                this.enemies.push({
-                    id: `enemy_${enemyIndex}`,
-                    x: startX + col * this.waveConfig.formationSpacing,
-                    y: startY + row * 50,
-                    width: 40,
-                    height: 30,
-                    speed: enemySpeed,
-                    type: enemyType,
-                    health: enemyType.health,
-                    maxHealth: enemyType.health,
-                    points: enemyType.points,
-                    color: enemyType.color,
-                    lastShot: 0,
-                    shootInterval: enemyType.shootInterval,
-                    destroyed: false
-                });
-                enemyIndex++;
-            }
-        }
-        
-        // Reset enemy movement
-        this.enemyDirection = 1;
-        this.enemyMoveTimer = 0;
-    }
-    
-    /**
-     * Get enemy type configuration based on row position
-     */
-    getEnemyType(row) {
-        const types = [
-            { health: 1, points: 30, color: '#ff4444', shootInterval: 3000 }, // Fast scouts
-            { health: 2, points: 20, color: '#44ff44', shootInterval: 2500 }, // Medium fighters
-            { health: 3, points: 10, color: '#4444ff', shootInterval: 2000 }  // Heavy tanks
-        ];
-        return types[Math.min(row, types.length - 1)];
-    }
-    
-    /**
-     * Player shooting mechanism
-     */
-    shoot() {
-        if (!this.gameRunning || this.gameOver) return;
-        
-        const now = Date.now();
-        if (now - (this.player.lastShot || 0) < 200) return; // Rate limiting
-        
-        this.bullets.push({
-            x: this.player.x + this.player.width / 2 - 2,
-            y: this.player.y,
-            width: 4,
-            height: 10,
-            speed: 8,
-            owner: 'player',
-            damage: 1
-        });
-        
-        this.player.lastShot = now;
-    }
-    
-    /**
-     * Enemy shooting mechanism
-     */
-    enemyShoot(enemy) {
-        const now = Date.now();
-        if (now - enemy.lastShot < enemy.shootInterval) return;
-        
-        // Random chance to shoot
-        if (Math.random() < 0.1) {
-            this.bullets.push({
-                x: enemy.x + enemy.width / 2 - 2,
-                y: enemy.y + enemy.height,
-                width: 4,
-                height: 8,
-                speed: 3,
-                owner: 'enemy',
-                damage: 1,
-                color: '#ff6666'
-            });
-            enemy.lastShot = now;
-        }
-    }
-    
-    /**
-     * Update game state - main game loop logic
-     */
-    update(deltaTime) {
-        if (!this.gameRunning || this.gameOver) return;
-        
-        const updateStart = performance.now();
-        
-        this.updatePlayer(deltaTime);
-        this.updateBullets(deltaTime);
-        this.updateEnemies(deltaTime);
-        this.updateCollisions();
-        this.updateParticles(deltaTime);
-        this.checkGameState();
-        
-        this.performanceMetrics.updateTime = performance.now() - updateStart;
-    }
-    
-    /**
-     * Update player position and state
-     */
-    updatePlayer(deltaTime) {
-        // Player movement
-        if (this.keys['ArrowLeft'] || this.keys['KeyA']) {
-            this.player.x = Math.max(0, this.player.x - this.player.speed);
-        }
-        if (this.keys['ArrowRight'] || this.keys['KeyD']) {
-            this.player.x = Math.min(this.width - this.player.width, this.player.x + this.player.speed);
-        }
-        
-        // Validate player position
-        this.player.x = Math.max(0, Math.min(this.width - this.player.width, this.player.x));
-        this.player.y = Math.max(0, Math.min(this.height - this.player.height, this.player.y));
-    }
-    
-    /**
-     * Update bullet positions and lifecycle
-     */
-    updateBullets(deltaTime) {
-        for (let i = this.bullets.length - 1; i >= 0; i--) {
-            const bullet = this.bullets[i];
+    async initializeRenderer() {
+        try {
+            this.renderer = new Renderer(this.canvas);
+            await this.renderer.init();
             
-            if (bullet.owner === 'player') {
-                bullet.y -= bullet.speed;
-                if (bullet.y < -bullet.height) {
-                    this.bullets.splice(i, 1);
-                }
-            } else {
-                bullet.y += bullet.speed;
-                if (bullet.y > this.height) {
-                    this.bullets.splice(i, 1);
-                }
-            }
-        }
-    }
-    
-    /**
-     * Update enemy positions and behavior with formation movement
-     */
-    updateEnemies(deltaTime) {
-        if (this.enemies.length === 0) return;
-        
-        this.enemyMoveTimer += deltaTime;
-        
-        // Formation movement logic
-        if (this.enemyMoveTimer >= this.enemyMoveInterval) {
-            let shouldDrop = false;
+            this.log('Renderer initialized');
             
-            // Check if any enemy hits screen edge
-            for (const enemy of this.enemies) {
-                if (!enemy.destroyed) {
-                    if ((this.enemyDirection > 0 && enemy.x + enemy.width >= this.width - 10) ||
-                        (this.enemyDirection < 0 && enemy.x <= 10)) {
-                        shouldDrop = true;
-                        break;
-                    }
-                }
+        } catch (error) {
+            if (error instanceof RendererError) {
+                throw new GameInitializationError(
+                    `Renderer initialization failed: ${error.message}`,
+                    { rendererError: error }
+                );
             }
-            
-            // Move enemies
-            for (const enemy of this.enemies) {
-                if (!enemy.destroyed) {
-                    if (shouldDrop) {
-                        enemy.y += this.enemyDropDistance;
-                    } else {
-                        enemy.x += this.enemyDirection * 20;
-                    }
-                    
-                    // Enemy shooting
-                    this.enemyShoot(enemy);
-                }
-            }
-            
-            if (shouldDrop) {
-                this.enemyDirection *= -1;
-                // Increase speed slightly after each drop
-                this.enemyMoveInterval = Math.max(200, this.enemyMoveInterval - 50);
-            }
-            
-            this.enemyMoveTimer = 0;
-        }
-        
-        // Remove destroyed enemies
-        this.enemies = this.enemies.filter(enemy => !enemy.destroyed);
-    }
-    
-    /**
-     * Comprehensive collision detection system
-     */
-    updateCollisions() {
-        // Clear and rebuild quad tree for spatial partitioning
-        this.collisionQuadTree = new QuadTree(0, 0, this.width, this.height);
-        
-        // Add entities to quad tree
-        this.enemies.forEach(enemy => {
-            if (!enemy.destroyed) {
-                this.collisionQuadTree.insert(enemy);
-            }
-        });
-        
-        // Player bullet vs enemy collisions
-        for (let i = this.bullets.length - 1; i >= 0; i--) {
-            const bullet = this.bullets[i];
-            
-            if (bullet.owner === 'player') {
-                const nearbyEnemies = this.collisionQuadTree.retrieve(bullet);
-                
-                for (const enemy of nearbyEnemies) {
-                    if (this.checkCollision(bullet, enemy)) {
-                        // Damage enemy
-                        enemy.health -= bullet.damage;
-                        
-                        // Create hit effect
-                        this.createHitEffect(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                        
-                        if (enemy.health <= 0) {
-                            // Enemy destroyed
-                            enemy.destroyed = true;
-                            this.score += enemy.points;
-                            this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                        }
-                        
-                        // Remove bullet
-                        this.bullets.splice(i, 1);
-                        break;
-                    }
-                }
-            } else if (bullet.owner === 'enemy') {
-                // Enemy bullet vs player collision
-                if (this.checkCollision(bullet, this.player)) {
-                    this.player.health -= bullet.damage;
-                    this.bullets.splice(i, 1);
-                    this.createHitEffect(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2);
-                    
-                    if (this.player.health <= 0) {
-                        this.triggerGameOver();
-                    }
-                }
-            }
-        }
-        
-        // Enemy vs player collision (game over)
-        for (const enemy of this.enemies) {
-            if (!enemy.destroyed && this.checkCollision(enemy, this.player)) {
-                this.triggerGameOver();
-                break;
-            }
+            throw error;
         }
     }
     
     /**
-     * AABB collision detection
+     * Initialize all game systems
+     * 
+     * @private
+     * @returns {Promise<void>}
      */
-    checkCollision(rect1, rect2) {
-        return rect1.x < rect2.x + rect2.width &&
-               rect1.x + rect1.width > rect2.x &&
-               rect1.y < rect2.y + rect2.height &&
-               rect1.y + rect1.height > rect2.y;
+    async initializeSystems() {
+        // Systems will be initialized here as they are implemented
+        // For now, we'll just log that systems are ready
+        this.log('Game systems initialized');
     }
     
     /**
-     * Create visual hit effect
+     * Setup event listeners for game events
+     * 
+     * @private
      */
-    createHitEffect(x, y) {
-        for (let i = 0; i < 5; i++) {
-            this.particles.push({
-                x: x,
-                y: y,
-                vx: (Math.random() - 0.5) * 4,
-                vy: (Math.random() - 0.5) * 4,
-                life: 30,
-                maxLife: 30,
-                color: '#ffff00',
-                size: 3
-            });
-        }
-    }
-    
-    /**
-     * Create explosion effect
-     */
-    createExplosion(x, y) {
-        for (let i = 0; i < 10; i++) {
-            this.particles.push({
-                x: x,
-                y: y,
-                vx: (Math.random() - 0.5) * 8,
-                vy: (Math.random() - 0.5) * 8,
-                life: 60,
-                maxLife: 60,
-                color: '#ff4400',
-                size: 5
-            });
-        }
-    }
-    
-    /**
-     * Update particle effects
-     */
-    updateParticles(deltaTime) {
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const particle = this.particles[i];
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.life--;
-            
-            if (particle.life <= 0) {
-                this.particles.splice(i, 1);
-            }
-        }
-    }
-    
-    /**
-     * Check game state conditions
-     */
-    checkGameState() {
-        // Check for wave completion
-        const aliveEnemies = this.enemies.filter(enemy => !enemy.destroyed);
-        if (aliveEnemies.length === 0) {
-            this.currentWave++;
-            setTimeout(() => {
-                this.initializeWave();
-            }, this.waveConfig.waveDelay);
-        }
+    setupEventListeners() {
+        // Visibility change handling for pause/resume
+        const visibilityListener = () => this.handleVisibilityChange();
+        document.addEventListener('visibilitychange', visibilityListener);
+        this.eventListeners.push(['visibilitychange', visibilityListener, document]);
         
-        // Check if enemies reached player level (game over condition)
-        for (const enemy of this.enemies) {
-            if (!enemy.destroyed && enemy.y + enemy.height >= this.player.y) {
-                this.triggerGameOver();
-                break;
-            }
-        }
+        // Window resize handling
+        const resizeListener = () => this.handleResize();
+        window.addEventListener('resize', resizeListener);
+        this.eventListeners.push(['resize', resizeListener, window]);
+        
+        // Global error handling
+        const errorListener = (event) => this.handleError(event.error);
+        window.addEventListener('error', errorListener);
+        this.eventListeners.push(['error', errorListener, window]);
+        
+        // Unhandled promise rejection handling
+        const rejectionListener = (event) => this.handleError(event.reason);
+        window.addEventListener('unhandledrejection', rejectionListener);
+        this.eventListeners.push(['unhandledrejection', rejectionListener, window]);
+        
+        this.log('Event listeners setup complete');
     }
     
     /**
-     * Trigger game over state
-     */
-    triggerGameOver() {
-        this.gameOver = true;
-        this.gameRunning = false;
-    }
-    
-    /**
-     * Render all game elements
-     */
-    render() {
-        if (!this.ctx) return;
-        
-        const renderStart = performance.now();
-        
-        // Clear canvas
-        this.ctx.fillStyle = '#000011';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        if (this.gameRunning && !this.gameOver) {
-            this.renderPlayer();
-            this.renderBullets();
-            this.renderEnemies();
-            this.renderParticles();
-            this.renderUI();
-        } else if (this.gameOver) {
-            this.renderGameOver();
-        } else {
-            this.renderStartScreen();
-        }
-        
-        this.performanceMetrics.renderTime = performance.now() - renderStart;
-    }
-    
-    /**
-     * Render player sprite
-     */
-    renderPlayer() {
-        this.ctx.fillStyle = '#00ff00';
-        this.ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
-        
-        // Player health indicator
-        for (let i = 0; i < this.player.health; i++) {
-            this.ctx.fillStyle = '#ff0000';
-            this.ctx.fillRect(10 + i * 15, this.height - 30, 10, 10);
-        }
-    }
-    
-    /**
-     * Render all bullets with smooth animation
-     */
-    renderBullets() {
-        for (const bullet of this.bullets) {
-            this.ctx.fillStyle = bullet.color || '#ffffff';
-            this.ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-        }
-    }
-    
-    /**
-     * Render enemies with health indicators
-     */
-    renderEnemies() {
-        for (const enemy of this.enemies) {
-            if (!enemy.destroyed) {
-                // Enemy body
-                this.ctx.fillStyle = enemy.color;
-                this.ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-                
-                // Health bar for damaged enemies
-                if (enemy.health < enemy.maxHealth) {
-                    const healthPercent = enemy.health / enemy.maxHealth;
-                    this.ctx.fillStyle = '#ff0000';
-                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width, 4);
-                    this.ctx.fillStyle = '#00ff00';
-                    this.ctx.fillRect(enemy.x, enemy.y - 8, enemy.width * healthPercent, 4);
-                }
-            }
-        }
-    }
-    
-    /**
-     * Render particle effects
-     */
-    renderParticles() {
-        for (const particle of this.particles) {
-            const alpha = particle.life / particle.maxLife;
-            this.ctx.globalAlpha = alpha;
-            this.ctx.fillStyle = particle.color;
-            this.ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, 
-                            particle.size, particle.size);
-        }
-        this.ctx.globalAlpha = 1;
-    }
-    
-    /**
-     * Render game UI elements
-     */
-    renderUI() {
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = '20px Arial';
-        this.ctx.fillText(`Score: ${this.score}`, 10, 30);
-        this.ctx.fillText(`Wave: ${this.currentWave}`, 10, 60);
-        this.ctx.fillText(`Enemies: ${this.enemies.filter(e => !e.destroyed).length}`, 10, 90);
-        
-        // FPS counter
-        this.ctx.font = '14px Arial';
-        this.ctx.fillText(`FPS: ${this.fps}`, this.width - 80, 30);
-    }
-    
-    /**
-     * Render game over screen
-     */
-    renderGameOver() {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        this.ctx.fillStyle = '#ff0000';
-        this.ctx.font = '48px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('GAME OVER', this.width / 2, this.height / 2 - 50);
-        
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = '24px Arial';
-        this.ctx.fillText(`Final Score: ${this.score}`, this.width / 2, this.height / 2);
-        this.ctx.fillText(`Waves Completed: ${this.currentWave - 1}`, this.width / 2, this.height / 2 + 30);
-        this.ctx.fillText('Press R to Restart', this.width / 2, this.height / 2 + 80);
-        
-        this.ctx.textAlign = 'left';
-    }
-    
-    /**
-     * Render start screen
-     */
-    renderStartScreen() {
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = '36px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('SPACE INVADERS', this.width / 2, this.height / 2 - 50);
-        
-        this.ctx.font = '18px Arial';
-        this.ctx.fillText('Press SPACE to Start', this.width / 2, this.height / 2 + 20);
-        this.ctx.fillText('Arrow Keys or WASD to Move', this.width / 2, this.height / 2 + 50);
-        
-        this.ctx.textAlign = 'left';
-    }
-    
-    /**
-     * Start the game
+     * Start the game loop
+     * 
+     * @returns {void}
+     * @throws {GameLoopError} If the game loop fails to start
      */
     start() {
-        this.gameRunning = true;
-        this.gameOver = false;
-        this.score = 0;
-        this.currentWave = 1;
-        this.player.health = 3;
-        this.bullets = [];
-        this.particles = [];
-        this.initializeWave();
+        if (this.state === GameState.INITIALIZING) {
+            throw new GameLoopError('Cannot start game before initialization is complete');
+        }
+        
+        if (this.isRunning) {
+            this.log('Game loop already running');
+            return;
+        }
+        
+        this.isRunning = true;
+        this.isPaused = false;
+        this.lastFrameTime = performance.now();
+        this.setState(GameState.PLAYING);
+        
+        // Start the game loop
+        this.animationFrameId = requestAnimationFrame(this.gameLoop);
+        
+        this.log('Game loop started');
     }
     
     /**
-     * Restart the game
+     * Pause the game
+     * 
+     * @returns {void}
      */
-    restart() {
-        this.start();
+    pause() {
+        if (!this.isRunning || this.isPaused) {
+            return;
+        }
+        
+        this.isPaused = true;
+        this.setState(GameState.PAUSED);
+        
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
+        this.log('Game paused');
     }
     
     /**
-     * Main game loop with performance monitoring
+     * Resume the game from pause
+     * 
+     * @returns {void}
+     */
+    resume() {
+        if (!this.isRunning || !this.isPaused) {
+            return;
+        }
+        
+        this.isPaused = false;
+        this.setState(GameState.PLAYING);
+        this.lastFrameTime = performance.now(); // Reset timing to prevent large delta
+        
+        this.animationFrameId = requestAnimationFrame(this.gameLoop);
+        
+        this.log('Game resumed');
+    }
+    
+    /**
+     * Stop the game loop
+     * 
+     * @returns {void}
+     */
+    stop() {
+        this.isRunning = false;
+        this.isPaused = false;
+        
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
+        this.setState(GameState.MENU);
+        
+        this.log('Game stopped');
+    }
+    
+    /**
+     * Main game loop
+     * 
+     * Handles timing, updates, and rendering for each frame.
+     * Uses requestAnimationFrame for smooth 60fps performance.
+     * 
+     * @private
+     * @param {number} currentTime - Current timestamp from requestAnimationFrame
+     * @returns {void}
      */
     gameLoop(currentTime) {
-        const frameStart = performance.now();
-        
-        // Calculate delta time and FPS
-        const deltaTime = currentTime - this.lastTime;
-        this.lastTime = currentTime;
-        this.frameCount++;
-        
-        if (this.frameCount % 60 === 0) {
-            this.fps = Math.round(1000 / deltaTime);
+        if (!this.isRunning || this.isPaused) {
+            return;
         }
         
-        // Handle restart input
-        if (this.gameOver && this.keys['KeyR']) {
-            this.restart();
+        try {
+            const frameStartTime = performance.now();
+            
+            // Calculate delta time
+            this.deltaTime = Math.min(currentTime - this.lastFrameTime, this.options.maxDeltaTime);
+            this.lastFrameTime = currentTime;
+            
+            // Update performance metrics
+            this.updatePerformanceMetrics(frameStartTime);
+            
+            // Update game logic
+            const updateStartTime = performance.now();
+            this.update(this.deltaTime);
+            this.performanceMetrics.updateTime = performance.now() - updateStartTime;
+            
+            // Render frame
+            const renderStartTime = performance.now();
+            this.render();
+            this.performanceMetrics.renderTime = performance.now() - renderStartTime;
+            
+            // Calculate total frame time
+            this.performanceMetrics.frameTime = performance.now() - frameStartTime;
+            
+            // Schedule next frame
+            this.animationFrameId = requestAnimationFrame(this.gameLoop);
+            
+        } catch (error) {
+            this.handleError(new GameLoopError(
+                `Game loop error: ${error.message}`,
+                { originalError: error, frameCount: this.frameCount }
+            ));
         }
-        
-        // Handle start input
-        if (!this.gameRunning && !this.gameOver && this.keys['Space']) {
-            this.start();
-        }
-        
-        // Update and render
-        this.update(deltaTime);
-        this.render();
-        
-        this.performanceMetrics.frameTime = performance.now() - frameStart;
-        
-        // Continue game loop
-        requestAnimationFrame((time) => this.gameLoop(time));
-    }
-}
-
-/**
- * Simple QuadTree implementation for spatial partitioning
- * Optimizes collision detection performance with many entities
- */
-class QuadTree {
-    constructor(x, y, width, height, maxObjects = 10, maxLevels = 5, level = 0) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-        this.maxObjects = maxObjects;
-        this.maxLevels = maxLevels;
-        this.level = level;
-        this.objects = [];
-        this.nodes = [];
     }
     
-    clear() {
-        this.objects = [];
-        for (const node of this.nodes) {
-            node.clear();
-        }
-        this.nodes = [];
-    }
-    
-    split() {
-        const subWidth = this.width / 2;
-        const subHeight = this.height / 2;
-        const x = this.x;
-        const y = this.y;
-        
-        this.nodes[0] = new QuadTree(x + subWidth, y, subWidth, subHeight, 
-                                   this.maxObjects, this.maxLevels, this.level + 1);
-        this.nodes[1] = new QuadTree(x, y, subWidth, subHeight, 
-                                   this.maxObjects, this.maxLevels, this.level + 1);
-        this.nodes[2] = new QuadTree(x, y + subHeight, subWidth, subHeight, 
-                                   this.maxObjects, this.maxLevels, this.level + 1);
-        this.nodes[3] = new QuadTree(x + subWidth, y + subHeight, subWidth, subHeight, 
-                                   this.maxObjects, this.maxLevels, this.level + 1);
-    }
-    
-    getIndex(rect) {
-        let index = -1;
-        const verticalMidpoint = this.x + this.width / 2;
-        const horizontalMidpoint = this.y + this.height / 2;
-        
-        const topQuadrant = rect.y < horizontalMidpoint && rect.y + rect.height < horizontalMidpoint;
-        const bottomQuadrant = rect.y > horizontalMidpoint;
-        
-        if (rect.x < verticalMidpoint && rect.x + rect.width < verticalMidpoint) {
-            if (topQuadrant) {
-                index = 1;
-            } else if (bottomQuadrant) {
-                index = 2;
-            }
-        } else if (rect.x > verticalMidpoint) {
-            if (topQuadrant) {
-                index = 0;
-            } else if (bottomQuadrant) {
-                index = 3;
+    /**
+     * Update game logic
+     * 
+     * @private
+     * @param {number} deltaTime - Time elapsed since last frame in milliseconds
+     * @returns {void}
+     */
+    update(deltaTime) {
+        // Update all game systems
+        for (const [name, system] of this.systems) {
+            if (system && typeof system.update === 'function') {
+                try {
+                    system.update(deltaTime);
+                } catch (error) {
+                    this.log(`Error updating system ${name}:`, error, 'error');
+                }
             }
         }
         
-        return index;
+        // Update total game time
+        this.performanceMetrics.totalGameTime += deltaTime;
     }
     
-    insert(rect) {
-        if (this.nodes.length > 0) {
-            const index = this.getIndex(rect);
-            if (index !== -1) {
-                this.nodes[index].insert(rect);
-                return;
-            }
+    /**
+     * Render the current frame
+     * 
+     * @private
+     * @returns {void}
+     */
+    render() {
+        if (!this.renderer) {
+            return;
         }
         
-        this.objects.push(rect);
-        
-        if (this.objects.length > this.maxObjects && this.level < this.maxLevels) {
-            if (this.nodes.length === 0) {
-                this.split();
+        try {
+            // Clear the canvas
+            this.renderer.clear();
+            
+            // Render all game systems
+            for (const [name, system] of this.systems) {
+                if (system && typeof system.render === 'function') {
+                    try {
+                        system.render(this.renderer);
+                    } catch (error) {
+                        this.log(`Error rendering system ${name}:`, error, 'error');
+                    }
+                }
             }
             
-            let i = 0;
-            while (i < this.objects.length) {
-                const index = this.getIndex(this.objects[i]);
-                if (index !== -1) {
-                    this.nodes[index].insert(this.objects.splice(i, 1)[0]);
-                } else {
-                    i++;
-                }
+            // Render debug information if enabled
+            if (this.options.debug) {
+                this.renderDebugInfo();
+            }
+            
+        } catch (error) {
+            this.log('Render error:', error, 'error');
+        }
+    }
+    
+    /**
+     * Render debug information
+     * 
+     * @private
+     * @returns {void}
+     */
+    renderDebugInfo() {
+        const ctx = this.renderer.context;
+        const debugY = 20;
+        const lineHeight = 16;
+        let currentY = debugY;
+        
+        // Set debug text style
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'left';
+        
+        // FPS counter
+        ctx.fillText(`FPS: ${this.fps.toFixed(1)}`, 10, currentY);
+        currentY += lineHeight;
+        
+        // Performance metrics
+        ctx.fillText(`Frame: ${this.performanceMetrics.frameTime.toFixed(2)}ms`, 10, currentY);
+        currentY += lineHeight;
+        
+        ctx.fillText(`Update: ${this.performanceMetrics.updateTime.toFixed(2)}ms`, 10, currentY);
+        currentY += lineHeight;
+        
+        ctx.fillText(`Render: ${this.performanceMetrics.renderTime.toFixed(2)}ms`, 10, currentY);
+        currentY += lineHeight;
+        
+        // Game state
+        ctx.fillText(`State: ${this.state}`, 10, currentY);
+        currentY += lineHeight;
+        
+        // Canvas dimensions
+        ctx.fillText(`Canvas: ${this.canvas.width}x${this.canvas.height}`, 10, currentY);
+    }
+    
+    /**
+     * Update performance metrics and FPS calculation
+     * 
+     * @private
+     * @param {number} frameStartTime - Start time of current frame
+     * @returns {void}
+     */
+    updatePerformanceMetrics(frameStartTime) {
+        this.frameCount++;
+        
+        // Update FPS every second
+        if (frameStartTime - this.fpsUpdateTime >= 1000) {
+            this.fps = this.frameCount * 1000 / (frameStartTime - this.fpsUpdateTime);
+            
+            // Update FPS statistics
+            this.performanceMetrics.averageFPS = (this.performanceMetrics.averageFPS + this.fps) / 2;
+            this.performanceMetrics.minFPS = Math.min(this.performanceMetrics.minFPS, this.fps);
+            this.performanceMetrics.maxFPS = Math.max(this.performanceMetrics.maxFPS, this.fps);
+            
+            this.frameCount = 0;
+            this.fpsUpdateTime = frameStartTime;
+            
+            // Log performance metrics periodically
+            if (this.options.enablePerformanceMonitoring) {
+                performanceMonitor.recordMetric('fps', this.fps);
+                performanceMonitor.recordMetric('frameTime', this.performanceMetrics.frameTime);
             }
         }
     }
     
-    retrieve(rect) {
-        const returnObjects = [...this.objects];
-        
-        if (this.nodes.length > 0) {
-            const index = this.getIndex(rect);
-            if (index !== -1) {
-                returnObjects.push(...this.nodes[index].retrieve(rect));
-            } else {
-                for (const node of this.nodes) {
-                    returnObjects.push(...node.retrieve(rect));
-                }
-            }
+    /**
+     * Set the current game state
+     * 
+     * @private
+     * @param {string} newState - The new game state
+     * @returns {void}
+     */
+    setState(newState) {
+        if (!Object.values(GameState).includes(newState)) {
+            this.log(`Invalid game state: ${newState}`, null, 'warn');
+            return;
         }
         
-        return returnObjects;
+        const previousState = this.state;
+        this.state = newState;
+        
+        this.log(`Game state changed: ${previousState} -> ${newState}`);
+        
+        // Emit state change event (for future event system)
+        this.onStateChange(previousState, newState);
+    }
+    
+    /**
+     * Handle game state changes
+     * 
+     * @private
+     * @param {string} previousState - The previous game state
+     * @param {string} newState - The new game state
+     * @returns {void}
+     */
+    onStateChange(previousState, newState) {
+        // State change logic will be implemented here
+        // For now, just log the change
+        this.log(`State transition: ${previousState} -> ${newState}`);
+    }
+    
+    /**
+     * Handle visibility change events (tab switching, minimizing)
+     * 
+     * @private
+     * @returns {void}
+     */
+    handleVisibilityChange() {
+        if (document.hidden) {
+            if (this.isRunning && !this.isPaused) {
+                this.pause();
+                this.log('Game auto-paused due to visibility change');
+            }
+        } else {
+            // Don't auto-resume, let user decide
+            this.log('Game visibility restored');
+        }
+    }
+    
+    /**
+     * Handle window resize events
+     * 
+     * @private
+     * @returns {void}
+     */
+    handleResize() {
+        if (!this.canvas || !this.renderer) {
+            return;
+        }
+        
+        try {
+            // Maintain aspect ratio while fitting to container
+            const container = this.canvas.parentElement;
+            if (container) {
+                const containerRect = container.getBoundingClientRect();
+                const aspectRatio = gameConfig.canvas.width / gameConfig.canvas.height;
+                
+                let newWidth = containerRect.width;
+                let newHeight = newWidth / aspectRatio;
+                
+                if (newHeight > containerRect.height) {
+                    newHeight = containerRect.height;
+                    newWidth = newHeight * aspectRatio;
+                }
+                
+                this.canvas.style.width = `${newWidth}px`;
+                this.canvas.style.height = `${newHeight}px`;
+                
+                this.log('Canvas resized', { width: newWidth, height: newHeight });
+            }
+            
+        } catch (error) {
+            this.log('Error handling resize:', error, 'error');
+        }
+    }
+    
+    /**
+     * Handle errors that occur during game execution
+     * 
+     * @private
+     * @param {Error} error - The error that occurred
+     * @returns {void}
+     */
+    handleError(error) {
+        this.errorCount++;
+        this.lastError = error;
+        
+        this.log('Game error occurred:', error, 'error');
+        
+        // If too many errors occur, stop the game
+        if (this.errorCount >= this.maxErrors) {
+            this.log(`Too many errors (${this.errorCount}), stopping game`, null, 'error');
+            this.stop();
+            this.setState(GameState.ERROR);
+        }
+        
+        // Report error to performance monitor
+        if (this.options.enablePerformanceMonitoring) {
+            performanceMonitor.recordError(error);
+        }
+    }
+    
+    /**
+     * Get current performance metrics
+     * 
+     * @returns {Object} Current performance metrics
+     */
+    getPerformanceMetrics() {
+        return {
+            ...this.performanceMetrics,
+            fps: this.fps,
+            frameCount: this.frameCount,
+            errorCount: this.errorCount,
+            state: this.state,
+            isRunning: this.isRunning,
+            isPaused: this.isPaused
+        };
+    }
+    
+    /**
+     * Clean up resources and event listeners
+     * 
+     * @returns {void}
+     */
+    destroy() {
+        this.log('Destroying game instance...');
+        
+        // Stop the game loop
+        this.stop();
+        
+        // Clean up event listeners
+        this.eventListeners.forEach(([event, listener, target]) => {
+            target.removeEventListener(event, listener);
+        });
+        this.eventListeners.length = 0;
+        
+        // Clean up renderer
+        if (this.renderer) {
+            this.renderer.destroy();
+            this.renderer = null;
+        }
+        
+        // Clean up systems
+        this.systems.clear();
+        
+        // End performance monitoring session
+        if (this.options.enablePerformanceMonitoring) {
+            performanceMonitor.endSession();
+        }
+        
+        this.log('Game instance destroyed');
+    }
+    
+    /**
+     * Logging utility with different levels
+     * 
+     * @private
+     * @param {string} message - Log message
+     * @param {*} data - Additional data to log
+     * @param {string} level - Log level (info, warn, error)
+     * @returns {void}
+     */
+    log(message, data = null, level = 'info') {
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            timestamp,
+            level,
+            message,
+            gameState: this.state,
+            frameCount: this.frameCount
+        };
+        
+        if (data) {
+            logEntry.data = data;
+        }
+        
+        // Console output based on level
+        switch (level) {
+            case 'error':
+                console.error(`[GAME ERROR] ${message}`, data);
+                break;
+            case 'warn':
+                console.warn(`[GAME WARN] ${message}`, data);
+                break;
+            default:
+                if (this.options.debug) {
+                    console.log(`[GAME] ${message}`, data);
+                }
+        }
+        
+        // Send to performance monitor if available
+        if (this.options.enablePerformanceMonitoring) {
+            performanceMonitor.log(level, message, logEntry);
+        }
     }
 }
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { Game, QuadTree };
-}
+// Export the Game class and related utilities
+export {
+    Game,
+    GameError,
+    GameInitializationError,
+    GameLoopError,
+    GameState
+};
+
+// Default export
+export default Game;

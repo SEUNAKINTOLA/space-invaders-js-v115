@@ -1,0 +1,51 @@
+{
+  "name": "space-invaders-js-v115",
+  "version": "1.15.0",
+  "description": "A modern HTML5 Canvas-based Space Invaders game with advanced features and responsive design",
+  "type": "module",
+  "main": "js/game.js",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "start": "http-server -p 3000 -c-1 --cors",
+    "dev": "http-server -p 3000 -c-1 --cors -o",
+    "serve": "http-server -p 8080 -c-1",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint js/ tests/ --ext .js",
+    "lint:fix": "eslint js/ tests/ --ext .js --fix",
+    "build": "echo 'Build step - static files ready'",
+    "clean": "rm -rf coverage/ .jest-cache/"
+  },
+  "keywords": [
+    "space-invaders",
+    "html5-canvas",
+    "javascript-game",
+    "arcade-game",
+    "retro-gaming",
+    "browser-game",
+    "canvas-api",
+    "game-development"
+  ],
+  "author": "SEUNAKINTOLA",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SEUNAKINTOLA/space-invaders-js-v115.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SEUNAKINTOLA/space-invaders-js-v115/issues"
+  },
+  "homepage": "https://github.com/SEUNAKINTOLA/space-invaders-js-v115#readme",
+  "dependencies": {
+    "http-server": "^14.1.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "eslint": "^8.57.0"
+  }
+}
