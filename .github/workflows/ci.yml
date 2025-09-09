@@ -45,9 +45,13 @@ jobs:
         with:
           node-version: '18'
           
-      - name: Install dependencies
-        if: steps.check-package.outputs.exists == 'true'
+      - name: Install dependencies (with lock file)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'true'
         run: npm ci
+        
+      - name: Install dependencies (without lock file)
+        if: steps.check-package.outputs.exists == 'true' && steps.check-lock.outputs.exists == 'false'
+        run: npm install
         
       - name: Run linter
         if: steps.check-package.outputs.exists == 'true'
