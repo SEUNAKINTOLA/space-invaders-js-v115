@@ -13,12 +13,13 @@ module.exports = {
         sourceType: 'module'
     },
     rules: {
-        'indent': ['error', 4],
+        'indent': 'off',
         'linebreak-style': ['error', 'unix'],
         'quotes': ['error', 'single'],
         'semi': ['error', 'always'],
         'no-console': 'off',
-        'no-unused-vars': 'off'
+        'no-unused-vars': 'off',
+        'no-prototype-builtins': 'off'
     },
     ignorePatterns: [
         'node_modules/',
