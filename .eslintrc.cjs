@@ -13,25 +13,16 @@ module.exports = {
         sourceType: 'module'
     },
     rules: {
-        // Disable problematic rules that are causing CI failures
-        'no-trailing-spaces': 'off',
-        'no-console': 'off',
-        'no-prototype-builtins': 'off',
-        'no-magic-numbers': 'off',
-        'max-lines-per-function': 'off',
-        'max-statements': 'off',
-        
-        // Keep essential rules
-        'no-unused-vars': 'warn',
-        'no-undef': 'error',
+        'indent': ['error', 4],
+        'linebreak-style': ['error', 'unix'],
+        'quotes': ['error', 'single'],
         'semi': ['error', 'always'],
-        'quotes': ['error', 'single']
+        'no-console': 'off',
+        'no-unused-vars': 'off'
     },
-    globals: {
-        // Game-specific globals
-        'gameConfig': 'readonly',
-        'Enemy': 'readonly',
-        'Player': 'readonly',
-        'Projectile': 'readonly'
-    }
+    ignorePatterns: [
+        'node_modules/',
+        'dist/',
+        'build/'
+    ]
 };
